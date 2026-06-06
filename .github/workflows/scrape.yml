@@ -1,0 +1,59 @@
+name: Cardmarket Preise scrapen
+
+on:
+  schedule:
+    # Täglich um 06:00 UTC (08:00 MEZ)
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    # Auch manuell startbar (GitHub → Actions → Run workflow)
+    inputs:
+      language:
+        description: 'Sprache (D, GB, F, I, E)'
+        required: false
+        default: 'D'
+      condition:
+        description: 'Zustand (NM, EX, GD, LP)'
+        required: false
+        default: 'NM'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Dependencies installieren
+        run: npm ci
+
+      - name: Playwright Browser installieren
+        run: npx playwright install chromium --with-deps
+
+      - name: Preise scrapen (Deutsch / NM)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SCRAPE_LANG: ${{ github.event.inputs.language || 'D' }}
+          SCRAPE_COND: ${{ github.event.inputs.condition || 'NM' }}
+        run: node scripts/scraper.js
+
+      - name: Preise scrapen (Englisch / NM)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SCRAPE_LANG: 'GB'
+          SCRAPE_COND: 'NM'
+        run: node scripts/scraper.js
+        # Englisch nur wenn keine manuelle Eingabe
+        if: ${{ github.event_name == 'schedule' }}
+
+      - name: Ergebnis
+        run: echo "Scraping abgeschlossen – $(date)"
