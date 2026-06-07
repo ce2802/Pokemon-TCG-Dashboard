@@ -1,220 +1,215 @@
 #!/usr/bin/env node
 /**
- * PokéDex Preise – Cardmarket Scraper
- * Läuft täglich via GitHub Actions mit Playwright (echter Chromium)
- * Liest Karten aus Supabase, scrapt Cardmarket, speichert Preise zurück
+ * PokéDex Preise – Cardmarket Scraper v2
+ * Nutzt Playwright mit realistischem Browser-Profil
  */
 
 const { chromium } = require('playwright')
 const { createClient } = require('@supabase/supabase-js')
 
-// ── Config ────────────────────────────────────────────────────
-const SUPABASE_URL      = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
-const SUPABASE_KEY      = process.env.SUPABASE_SERVICE_KEY
-const LANG              = process.env.SCRAPE_LANG || 'D'
-const CONDITION         = process.env.SCRAPE_COND || 'NM'
-const DELAY_MS          = 2500   // Pause zwischen Requests (höflich)
-const RETRY_MAX         = 2      // Anzahl Wiederholungsversuche
+const SUPABASE_URL  = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+const SUPABASE_KEY  = process.env.SUPABASE_SERVICE_KEY
+const LANG          = process.env.SCRAPE_LANG || 'D'
+const CONDITION     = process.env.SCRAPE_COND || 'NM'
 
-// Cardmarket Sprach-IDs
-const LANG_IDS = { D:5, GB:1, F:2, I:3, E:4, PT:7, JP:8, KO:10, NL:6, RU:9 }
-// Cardmarket Zustands-IDs (minCondition = mindestens dieser Zustand)
+const LANG_IDS = { D:5, GB:1, F:2, I:3, E:4, PT:7, JP:8, KO:10 }
 const COND_IDS = { MT:1, NM:2, EX:3, GD:4, LP:5, PL:6, PO:7 }
 
-// ── Supabase ─────────────────────────────────────────────────
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  realtime: { enabled: false }
+})
 
-// ── Helpers ───────────────────────────────────────────────────
 function slugify(name) {
   return (name || '')
     .replace(/&/g, 'and')
     .replace(/[éèê]/g, 'e').replace(/[àâ]/g, 'a')
     .replace(/[ûü]/g, 'u').replace(/[ö]/g, 'o').replace(/[ä]/g, 'a')
-    .replace(/[^\w\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
+    .replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-')
 }
 
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms))
-}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
+function log(msg)  { console.log(`[${new Date().toISOString()}] ${msg}`) }
 
-function log(msg) {
-  console.log(`[${new Date().toISOString()}] ${msg}`)
-}
-
-// ── Preis aus Seite extrahieren ───────────────────────────────
 function extractPrices(html) {
   const result = { price_low: null, price_trend: null, price_avg: null, offers_count: null }
 
-  // Methode 1: articleRow JSON (Cardmarket embedded data)
-  const jsonMatch = html.match(/window\.App\.articleRows\s*=\s*(\[[\s\S]*?\]);/)
-  if (jsonMatch) {
-    try {
-      const articles = JSON.parse(jsonMatch[1])
-      const prices = articles
-        .filter(a => a.price && parseFloat(a.price) > 0)
-        .map(a => parseFloat(a.price))
-        .sort((a, b) => a - b)
-
-      if (prices.length > 0) {
-        result.price_low     = prices[0]
-        result.price_avg     = prices.reduce((s, p) => s + p, 0) / prices.length
-        result.offers_count  = prices.length
-      }
-    } catch (e) { /* weiter */ }
+  // Methode 1: JSON-Daten im Script-Tag (window.__NEXT_DATA__ oder ähnlich)
+  const jsonMatches = html.matchAll(/"price"\s*:\s*"?([\d.]+)"?/g)
+  const prices = []
+  for (const m of jsonMatches) {
+    const v = parseFloat(m[1])
+    if (v > 0.01 && v < 50000) prices.push(v)
+  }
+  if (prices.length > 0) {
+    prices.sort((a,b) => a-b)
+    result.price_low = prices[0]
+    result.offers_count = prices.length
   }
 
-  // Methode 2: Price Guide Werte aus HTML
-  // "Price Trend" Wert
-  const trendMatch = html.match(/Price Trend[\s\S]{0,200}?([\d]+[,.][\d]+)\s*€/i)
-  if (trendMatch) {
-    result.price_trend = parseFloat(trendMatch[1].replace(',', '.'))
+  // Methode 2: Price Trend aus HTML
+  const trendPatterns = [
+    /Price Trend[\s\S]{0,300}?([\d]+[,.][\d]+)\s*€/i,
+    /Trend[\s\S]{0,100}?([\d]+[,.][\d]+)\s*€/i,
+    /"trend"\s*:\s*"?([\d.]+)"?/i,
+  ]
+  for (const pat of trendPatterns) {
+    const m = html.match(pat)
+    if (m) {
+      result.price_trend = parseFloat(m[1].replace(',', '.'))
+      break
+    }
   }
 
-  // "From" Preis (günstigstes Angebot)
-  const fromMatch = html.match(/class="[^"]*color-primary[^"]*"[^>]*>\s*([\d]+[,.][\d]+)\s*€/)
-  if (fromMatch && !result.price_low) {
-    result.price_low = parseFloat(fromMatch[1].replace(',', '.'))
-  }
-
-  // Fallback: erste Preis-Zahl auf der Seite
-  if (!result.price_low && !result.price_trend) {
-    const anyPrice = html.match(/([\d]+[,.][\d]{2})\s*€/)
-    if (anyPrice) {
-      const val = parseFloat(anyPrice[1].replace(',', '.'))
-      if (val > 0.01 && val < 50000) result.price_low = val
+  // Methode 3: "Von X €" - günstigstes Angebot
+  const fromPatterns = [
+    /Von\s*<[^>]*>\s*([\d,]+)\s*€/i,
+    /from\s*<[^>]*>\s*([\d.]+)\s*€/i,
+    /Ab\s*([\d,]+)\s*€/i,
+    /"low"\s*:\s*"?([\d.]+)"?/i,
+  ]
+  for (const pat of fromPatterns) {
+    const m = html.match(pat)
+    if (m && !result.price_low) {
+      result.price_low = parseFloat(m[1].replace(',', '.'))
+      break
     }
   }
 
   return result
 }
 
-// ── Cardmarket Seite scrapen ──────────────────────────────────
 async function scrapePage(page, card, langId, condId) {
   const setSlug  = slugify(card.set_name)
   const nameSlug = slugify(card.name)
-  const langParam = `language=${langId}`
-  const condParam = `minCondition=${condId}`
+  const params   = `language=${langId}&minCondition=${condId}`
 
-  // Direkte URL zuerst
-  const directUrl = `https://www.cardmarket.com/de/Pokemon/Products/Singles/${setSlug}/${nameSlug}?${langParam}&${condParam}`
+  // Versuche direkte URL
+  const directUrl = `https://www.cardmarket.com/de/Pokemon/Products/Singles/${setSlug}/${nameSlug}?${params}`
 
-  for (let attempt = 1; attempt <= RETRY_MAX; attempt++) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 20000 })
-      await sleep(1500)
+      await page.goto(directUrl, { waitUntil: 'networkidle', timeout: 25000 })
+      await sleep(2000 + Math.random() * 1000)
 
-      const currentUrl = page.url()
-      let html = await page.content()
+      const url  = page.url()
+      let html   = await page.content()
 
-      // Falls auf Suche umgeleitet → ersten Treffer nehmen
-      if (currentUrl.includes('/Search') || html.includes('Keine Ergebnisse')) {
-        const searchUrl = `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(card.name)}&idCategory=1&${langParam}&${condParam}`
-        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 20000 })
+      // Falls auf Suchseite weitergeleitet
+      if (url.includes('/Search') || url.includes('searchString')) {
+        const searchUrl = `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(card.name)}&idCategory=1&${params}`
+        await page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 20000 })
         await sleep(1500)
         html = await page.content()
 
-        // Ersten Singles-Link finden
+        // Ersten Produktlink finden
         const linkMatch = html.match(/href="(\/de\/Pokemon\/Products\/Singles\/[^"?#]+)"/)
         if (!linkMatch) {
-          log(`  ⚠ Nicht gefunden: ${card.name} (${card.set_name})`)
+          log(`  ⚠ Nicht auf Cardmarket gefunden: ${card.name}`)
           return null
         }
 
-        const productUrl = `https://www.cardmarket.com${linkMatch[1]}?${langParam}&${condParam}`
-        await page.goto(productUrl, { waitUntil: 'domcontentloaded', timeout: 20000 })
-        await sleep(1500)
+        const productUrl = `https://www.cardmarket.com${linkMatch[1]}?${params}`
+        await page.goto(productUrl, { waitUntil: 'networkidle', timeout: 20000 })
+        await sleep(2000)
         html = await page.content()
       }
 
-      const prices = extractPrices(html)
+      // URL für späteres Speichern
       const finalUrl = page.url().split('?')[0]
+      await supabase.from('cards').update({ cm_url: finalUrl }).eq('id', card.id)
 
-      // Cardmarket URL in cards updaten
-      await supabase
-        .from('cards')
-        .update({ cm_url: finalUrl })
-        .eq('id', card.id)
+      const prices = extractPrices(html)
 
-      return prices
+      // Debug: zeige was gefunden wurde
+      if (prices.price_low || prices.price_trend) {
+        return prices
+      }
 
+      // Falls nichts gefunden: Screenshot für Debugging
+      log(`  ℹ Seite geladen aber kein Preis extrahierbar für ${card.name}`)
+
+      if (attempt < 2) {
+        log(`  ↻ Wiederhole...`)
+        await sleep(3000)
+      }
     } catch (err) {
-      log(`  ⚠ Versuch ${attempt}/${RETRY_MAX} fehlgeschlagen: ${err.message}`)
-      if (attempt < RETRY_MAX) await sleep(3000)
+      log(`  ⚠ Versuch ${attempt} fehlgeschlagen: ${err.message?.substring(0, 80)}`)
+      if (attempt < 2) await sleep(3000)
     }
   }
   return null
 }
 
-// ── Hauptfunktion ─────────────────────────────────────────────
 async function main() {
-  log(`=== Cardmarket Scraper gestartet ===`)
+  log(`=== Cardmarket Scraper v2 ===`)
   log(`Sprache: ${LANG} | Zustand: ${CONDITION}`)
 
   const langId = LANG_IDS[LANG] || 1
   const condId = COND_IDS[CONDITION] || 2
 
-  // Karten aus Supabase laden
-  const { data: cards, error } = await supabase
-    .from('cards')
-    .select('*')
-    .order('name')
-
-  if (error) { log(`FEHLER beim Laden der Karten: ${error.message}`); process.exit(1) }
-  if (!cards?.length) { log('Keine Karten in der Datenbank. Bitte zuerst CSV importieren.'); process.exit(0) }
+  const { data: cards, error } = await supabase.from('cards').select('*').order('name')
+  if (error) { log(`FEHLER: ${error.message}`); process.exit(1) }
+  if (!cards?.length) { log('Keine Karten in DB'); process.exit(0) }
 
   log(`${cards.length} Karten geladen`)
 
-  // Dedupliziere nach Name + Set (verschiedene Varianten = gleicher CM-Preis)
   const seen = new Set()
-  const uniqueCards = cards.filter(c => {
+  const unique = cards.filter(c => {
     const key = `${c.name}||${c.set_name}`
     if (seen.has(key)) return false
-    seen.add(key)
-    return true
+    seen.add(key); return true
   })
-  log(`${uniqueCards.length} unique Name+Set Kombinationen zu scrapen`)
+  log(`${unique.length} unique Karten zu scrapen`)
 
-  // Playwright starten
   const browser = await chromium.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--lang=de-DE']
+    args: [
+      '--no-sandbox', '--disable-dev-shm-usage',
+      '--disable-blink-features=AutomationControlled',
+      '--lang=de-DE,de',
+    ]
   })
 
   const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     locale: 'de-DE',
-    extraHTTPHeaders: { 'Accept-Language': 'de-DE,de;q=0.9' }
+    viewport: { width: 1280, height: 800 },
+    extraHTTPHeaders: { 'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8' }
   })
 
-  // Bot-Detection umgehen
   await context.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined })
+    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] })
   })
 
   const page = await context.newPage()
 
-  // Cardmarket-Cookie erst setzen (Cookie-Banner akzeptieren)
-  log('Öffne Cardmarket & akzeptiere Cookies…')
+  // Erst Startseite laden und Cookies akzeptieren
+  log('Lade Cardmarket Startseite...')
   await page.goto('https://www.cardmarket.com/de/Pokemon', { waitUntil: 'domcontentloaded', timeout: 30000 })
   await sleep(2000)
 
   try {
-    const cookieBtn = page.locator('button:has-text("Akzeptieren"), button:has-text("Accept"), #cookieBanner button').first()
-    if (await cookieBtn.isVisible({ timeout: 3000 })) {
-      await cookieBtn.click()
-      await sleep(1000)
-    }
-  } catch { /* kein Cookie-Banner */ }
+    await page.click('button:has-text("Akzeptieren")', { timeout: 3000 })
+    log('Cookies akzeptiert')
+    await sleep(1000)
+  } catch { log('Kein Cookie-Banner') }
 
-  // Scraping-Loop
+  // Teste ob Cardmarket erreichbar
+  const testHtml = await page.content()
+  if (testHtml.length < 1000) {
+    log('FEHLER: Cardmarket nicht erreichbar oder blockiert')
+    await browser.close()
+    process.exit(1)
+  }
+  log(`Cardmarket erreichbar (${testHtml.length} Zeichen)`)
+
   let success = 0, failed = 0
   const today = new Date().toISOString().split('T')[0]
 
-  for (let i = 0; i < uniqueCards.length; i++) {
-    const card = uniqueCards[i]
-    log(`(${i + 1}/${uniqueCards.length}) ${card.name} | ${card.set_name}`)
+  for (let i = 0; i < unique.length; i++) {
+    const card = unique[i]
+    log(`(${i+1}/${unique.length}) ${card.name} | ${card.set_name}`)
 
     const prices = await scrapePage(page, card, langId, condId)
 
@@ -222,18 +217,12 @@ async function main() {
       log(`  ✗ Kein Preis gefunden`)
       failed++
     } else {
-      // Alle Varianten mit gleichem Name+Set bekommen den gleichen Preis
       const sameCards = cards.filter(c => c.name === card.name && c.set_name === card.set_name)
-
       const rows = sameCards.map(c => ({
-        card_id:      c.id,
-        scraped_at:   today,
-        language:     LANG,
-        condition:    CONDITION,
-        price_low:    prices.price_low,
-        price_trend:  prices.price_trend,
-        price_avg:    prices.price_avg,
-        offers_count: prices.offers_count,
+        card_id: c.id, scraped_at: today,
+        language: LANG, condition: CONDITION,
+        price_low: prices.price_low, price_trend: prices.price_trend,
+        price_avg: prices.price_avg, offers_count: prices.offers_count,
       }))
 
       const { error: insertError } = await supabase
@@ -241,26 +230,21 @@ async function main() {
         .upsert(rows, { onConflict: 'card_id,scraped_at,language,condition' })
 
       if (insertError) {
-        log(`  ✗ DB Fehler: ${insertError.message}`)
+        log(`  ✗ DB: ${insertError.message}`)
         failed++
       } else {
-        const p = prices.price_low || prices.price_trend || prices.price_avg
+        const p = prices.price_low || prices.price_trend
         log(`  ✓ ${p?.toFixed(2)} € (${prices.offers_count || '?'} Angebote)`)
         success++
       }
     }
 
-    // Pause zwischen Requests
-    await sleep(DELAY_MS + Math.random() * 500)
+    await sleep(2000 + Math.random() * 1000)
   }
 
   await browser.close()
-
   log(`=== Fertig: ${success} erfolgreich, ${failed} fehlgeschlagen ===`)
-  process.exit(failed > 0 ? 1 : 0)
+  process.exit(failed > success ? 1 : 0)
 }
 
-main().catch(err => {
-  console.error('Unerwarteter Fehler:', err)
-  process.exit(1)
-})
+main().catch(err => { console.error(err); process.exit(1) })
