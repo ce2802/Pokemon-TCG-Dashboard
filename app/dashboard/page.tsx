@@ -611,9 +611,6 @@ export default function Dashboard() {
                               </span>
                             :latestManual?<span style={{fontSize:10,color:'#55556a'}}>1. Eintrag</span>
                             :<span style={{color:'#404055'}}>–</span>}
-                        </td>               </span>
-                            :latestManual?<span style={{fontSize:10,color:'#55556a'}}>1. Eintrag</span>
-                            :<span style={{color:'#404055'}}>–</span>}
                         </td>
                         <td style={{padding:'10px 14px'}}>
                           <div style={{display:'flex',alignItems:'center',gap:8}}>
