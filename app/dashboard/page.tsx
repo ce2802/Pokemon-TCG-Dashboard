@@ -405,6 +405,11 @@ export default function Dashboard() {
   const owned   = filtered.filter(c=>c.quantity>0)
   const liveVal = owned.filter(c=>c.price_live?.price_trend!=null).reduce((s,c)=>s+c.price_live!.price_trend!*c.quantity,0)
   const dexVal  = owned.filter(c=>c.dex_price!=null).reduce((s,c)=>s+c.dex_price!*c.quantity,0)
+  // Manueller Gesamtwert: neuester manueller Preis pro Karte × Quantity
+  const manualVal = owned.reduce((s,c)=>{
+    const latest = manualPrices.find(m=>m.card_id===c.id)
+    return latest ? s + latest.price * c.quantity : s
+  },0)
   const allSeries   = Array.from(new Set(cards.map(c=>c.series))).filter(Boolean).sort()
   const allRarities = Array.from(new Set(cards.map(c=>c.rarity))).filter(Boolean).sort()
 
@@ -447,7 +452,7 @@ export default function Dashboard() {
             {[
               {val:cards.length,lbl:'Karten'},
               {val:owned.length,lbl:'Im Besitz'},
-              {val:liveVal>0?fmt(liveVal):'–',lbl:'CM Trend-Wert'},
+              {val:manualVal>0?fmt(manualVal):'–',lbl:'Manueller Wert'},
               {val:dexVal>0?fmt(dexVal):'–',lbl:'DEX-Wert'},
             ].map(({val,lbl})=>(
               <div key={lbl} style={{background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.08)',borderRadius:99,padding:'8px 18px',textAlign:'center'}}>
@@ -500,7 +505,7 @@ export default function Dashboard() {
           {[
             {val:filtered.length,lbl:'Einträge gefiltert',acc:'#4e9eff'},
             {val:owned.length,lbl:'Im Besitz',acc:'#29e086'},
-            {val:liveVal>0?fmt(liveVal):'–',lbl:'CM Trend-Wert (Besitz)',acc:'#ffd426'},
+            {val:manualVal>0?fmt(manualVal):'–',lbl:'Manueller Wert (Besitz)',acc:'#b47bff'},
             {val:dexVal>0?fmt(dexVal):'–',lbl:'DEX-Wert (Besitz)',acc:'#55556a'},
           ].map(({val,lbl,acc})=>(
             <div key={lbl} style={{background:'#13131f',border:'1px solid rgba(255,255,255,.07)',borderRadius:12,padding:'15px 18px',position:'relative',overflow:'hidden'}}>
