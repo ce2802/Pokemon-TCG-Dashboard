@@ -605,14 +605,13 @@ export default function Dashboard() {
                         </td>
                         <td style={{padding:'10px 14px'}}>
                           {manualDiff!=null
-                            ?<span style={{fontFamily:'monospace',fontSize:11,fontWeight:700,borderRadius:6,padding:'3px 8px',display:'inline-flex',alignItems:'center',gap:4,
-                                background:manualDiff>0.01?'rgba(41,224,134,.12)':manualDiff<-0.01?'rgba(255,61,61,.1)':'rgba(255,255,255,.05)',
-                                color:manualDiff>0.01?'#29e086':manualDiff<-0.01?'#ff6666':'#55556a',
-                                title:prevManual?'Vorheriger Eintrag: '+prevManual.entered_at+' = '+prevManual.price.toFixed(2)+' €':''
-                              }}>
+                            ?<span style={{fontFamily:'monospace',fontSize:11,fontWeight:700,borderRadius:6,padding:'3px 8px',display:'inline-flex',alignItems:'center',gap:4,background:manualDiff>0.01?'rgba(41,224,134,.12)':manualDiff<-0.01?'rgba(255,61,61,.1)':'rgba(255,255,255,.05)',color:manualDiff>0.01?'#29e086':manualDiff<-0.01?'#ff6666':'#55556a'}}>
                                 {manualDiff>0.01?'↑':manualDiff<-0.01?'↓':'='}
                                 {manualDiff>=0?'+':''}{manualDiff.toFixed(2).replace('.',',')} €
                               </span>
+                            :latestManual?<span style={{fontSize:10,color:'#55556a'}}>1. Eintrag</span>
+                            :<span style={{color:'#404055'}}>–</span>}
+                        </td>               </span>
                             :latestManual?<span style={{fontSize:10,color:'#55556a'}}>1. Eintrag</span>
                             :<span style={{color:'#404055'}}>–</span>}
                         </td>
