@@ -552,6 +552,7 @@ export default function Dashboard() {
                       <span style={{display:'inline-flex',alignItems:'center',gap:5}}>{l} <SI k={k}/></span>
                     </th>
                   ))}
+                  <th style={{padding:'10px 14px',textAlign:'left',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'1.5px',color:'#b47bff'}}>Preisentw.</th>
                   <th style={{padding:'10px 14px',textAlign:'left',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'1.5px',color:'#55556a'}}>Manuell / Link</th>
                 </tr>
               </thead>
@@ -563,6 +564,8 @@ export default function Dashboard() {
                   const isSelected=selectedCard?.id===card.id
                   const cardManual=manualPrices.filter(m=>m.card_id===card.id)
                   const latestManual=cardManual[0]
+                  const prevManual=cardManual[1]
+                  const manualDiff=latestManual&&prevManual?latestManual.price-prevManual.price:null
 
                   return(
                     <>
@@ -598,6 +601,19 @@ export default function Dashboard() {
                                 {diff>0.01?<TrendingUp size={11}/>:diff<-0.01?<TrendingDown size={11}/>:<Minus size={11}/>}
                                 {diff>=0?'+':''}{fmt(diff)}
                               </span>
+                            :<span style={{color:'#404055'}}>–</span>}
+                        </td>
+                        <td style={{padding:'10px 14px'}}>
+                          {manualDiff!=null
+                            ?<span style={{fontFamily:'monospace',fontSize:11,fontWeight:700,borderRadius:6,padding:'3px 8px',display:'inline-flex',alignItems:'center',gap:4,
+                                background:manualDiff>0.01?'rgba(41,224,134,.12)':manualDiff<-0.01?'rgba(255,61,61,.1)':'rgba(255,255,255,.05)',
+                                color:manualDiff>0.01?'#29e086':manualDiff<-0.01?'#ff6666':'#55556a',
+                                title:prevManual?'Vorheriger Eintrag: '+prevManual.entered_at+' = '+prevManual.price.toFixed(2)+' €':''
+                              }}>
+                                {manualDiff>0.01?'↑':manualDiff<-0.01?'↓':'='}
+                                {manualDiff>=0?'+':''}{manualDiff.toFixed(2).replace('.',',')} €
+                              </span>
+                            :latestManual?<span style={{fontSize:10,color:'#55556a'}}>1. Eintrag</span>
                             :<span style={{color:'#404055'}}>–</span>}
                         </td>
                         <td style={{padding:'10px 14px'}}>
