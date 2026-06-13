@@ -167,10 +167,10 @@ function requestImage(cardId: string, cb: ()=>void) {
 function useCardImage(cardId: string) {
   const [url,setUrl] = useState<string|null>(imgCache.get(cardId)??null)
   useEffect(() => {
-    if (imgCache.has(cardId)){setUrl(imgCache.get(cardId)??null);return}
+    if (imgCache.has(cardId)){setUrl(imgCache.get(cardId)??null);return undefined}
     const cb = () => setUrl(imgCache.get(cardId)??null)
     requestImage(cardId, cb)
-    return () => imgListeners.get(cardId)?.delete(cb)
+    return () => { imgListeners.get(cardId)?.delete(cb) }
   },[cardId])
   return url
 }
