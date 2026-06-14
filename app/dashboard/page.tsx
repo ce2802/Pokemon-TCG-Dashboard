@@ -364,7 +364,7 @@ export default function Dashboard() {
   // Prefetch images when cards load
   useEffect(()=>{
     if(!cards.length) return
-    const unique=[...new Set(cards.map(c=>c.card_id))]
+    const unique=Array.from(new Set(cards.map(c=>c.card_id)))
     for (const id of unique) {
       if(!imgCache.has(id)&&!imgQueue.includes(id)) imgQueue.push(id)
     }
