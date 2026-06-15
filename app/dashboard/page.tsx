@@ -142,33 +142,32 @@ let imgRunning = false
 
 // Konvertiert Dex-App ID → Pokemon TCG API Set/Nummer Format
 function cardIdToPokemonTcgUrl(cardId: string): string[] {
-  // Normalisiere ID
+  // Normalisiere ID für bekannte Abweichungen
   let id = cardId
   if (id.startsWith('sv85-'))     id = id.replace('sv85-','sv8pt5-')
   if (id.startsWith('sv45-'))     id = id.replace('sv45-','sv4pt5-')
   if (id.startsWith('sm35-'))     id = id.replace('sm35-','sm3pt5-')
 
   // Baue direkte Bild-URLs (mehrere Formate probieren)
-  const [set, num] = id.split('-')
+  const parts = id.split('-')
+  const set = parts[0]
+  const num = parts.slice(1).join('-') // Handle IDs like swsh45sv-SV095
   if (!set || !num) return []
 
   const urls = [
-    // Pokemon TCG API direkte Bild-URL
+    // Pokemon TCG API direkte Bild-URLs (hires zuerst)
     `https://images.pokemontcg.io/${set}/${num}_hires.png`,
     `https://images.pokemontcg.io/${set}/${num}.png`,
-    // TCGdex
-    `https://assets.tcgdex.net/en/${set}/${set}-${num}/high.webp`,
+    // TCGdex Fallback
     `https://assets.tcgdex.net/en/${set}/${id}/high.webp`,
+    `https://assets.tcgdex.net/en/${set}/${set}-${num}/high.webp`,
   ]
   return urls
 }
 
 // Testet URLs der Reihe nach und nimmt die erste die lädt
 async function findWorkingImageUrl(cardId: string): Promise<string|null> {
-  // Japanische Sets → kein Bild verfügbar
-  const jpSets = ['me1','me2','me3','me4','me25','mcd23']
-  if (jpSets.some(s => cardId.startsWith(s+'-'))) return null
-
+  // Keine bekannten ausgeschlossenen Sets mehr - alle versuchen
   const urls = cardIdToPokemonTcgUrl(cardId)
 
   // Alle URLs parallel testen
