@@ -147,38 +147,30 @@ async function processImgQueue() {
     const id = imgQueue.shift()!
     if (imgCache.has(id)) { imgListeners.get(id)?.forEach(fn=>fn()); continue }
     try {
-      const mappedId = mapToTcgdexId(id)
-      if (!mappedId) { imgCache.set(id, null); imgListeners.get(id)?.forEach(fn=>fn()); continue }
-      const r = await fetch(`https://api.tcgdex.net/v2/en/cards/${mappedId}`)
-      const d = r.ok ? await r.json() : null
-      imgCache.set(id, d?.image ? `${d.image}/high.webp` : null)
+      // Methode 1: Pokemon TCG API (direktes JSON)
+      const r = await fetch(`https://api.pokemontcg.io/v2/cards/${id}`)
+      if (r.ok) {
+        const d = await r.json()
+        const img = d?.data?.images?.large || d?.data?.images?.small || null
+        imgCache.set(id, img)
+      } else {
+        // Methode 2: TCGdex als Fallback
+        const r2 = await fetch(`https://api.tcgdex.net/v2/en/cards/${id}`)
+        const d2 = r2.ok ? await r2.json() : null
+        imgCache.set(id, d2?.image ? `${d2.image}/high.webp` : null)
+      }
     } catch { imgCache.set(id, null) }
     imgListeners.get(id)?.forEach(fn=>fn())
-    await new Promise(r=>setTimeout(r,80))
+    await new Promise(r=>setTimeout(r,100))
   }
   imgRunning = false
 }
 
-// Map Dex App IDs to TCGdex IDs
-function mapToTcgdexId(cardId: string): string {
-  // Scarlet & Violet
-  if (cardId.startsWith('sv85-'))      return cardId.replace('sv85-','sv8pt5-')
-  if (cardId.startsWith('sv45-'))      return cardId.replace('sv45-','sv4pt5-')
-  // Sword & Shield
-  if (cardId.startsWith('swsh45sv-'))  return cardId.replace('swsh45sv-','swsh45sv-')
-  if (cardId.startsWith('swsh9tg-'))   return cardId.replace('swsh9tg-','swsh9tg-')
-  // Sun & Moon
-  if (cardId.startsWith('sm35-'))      return cardId.replace('sm35-','sm3pt5-')
-  if (cardId.startsWith('sma-'))       return cardId.replace('sma-','sma-')
-  // Japanische Sets die NICHT auf TCGdex existieren → kein Bild
-  if (cardId.startsWith('me1-'))       return ''
-  if (cardId.startsWith('me2-'))       return ''
-  if (cardId.startsWith('me3-'))       return ''
-  if (cardId.startsWith('me4-'))       return ''
-  if (cardId.startsWith('me25-'))      return ''
-  if (cardId.startsWith('mcd23-'))     return ''
-  // Alles andere direkt verwenden (dp, sv, swsh, ex, base etc.)
-  return cardId
+// Pokémon TCG API — funktioniert mit allen IDs aus der Dex-App
+// Direkte URL ohne API-Key für kleine Nutzung
+function getPokemonTcgImageUrl(cardId: string): string {
+  // Direkte Bild-URL von assets.pokemon.com via TCG API Proxy
+  return `https://images.pokemontcg.io/${cardId.replace('-','/')}.png`
 }
 
 function useCardImage(cardId: string) {
