@@ -147,7 +147,9 @@ async function processImgQueue() {
     const id = imgQueue.shift()!
     if (imgCache.has(id)) { imgListeners.get(id)?.forEach(fn=>fn()); continue }
     try {
-      const r = await fetch(`https://api.tcgdex.net/v2/en/cards/${mapToTcgdexId(id)}`)
+      const mappedId = mapToTcgdexId(id)
+      if (!mappedId) { imgCache.set(id, null); imgListeners.get(id)?.forEach(fn=>fn()); continue }
+      const r = await fetch(`https://api.tcgdex.net/v2/en/cards/${mappedId}`)
       const d = r.ok ? await r.json() : null
       imgCache.set(id, d?.image ? `${d.image}/high.webp` : null)
     } catch { imgCache.set(id, null) }
@@ -157,18 +159,25 @@ async function processImgQueue() {
   imgRunning = false
 }
 
-// Map Dex IDs to TCGdex IDs where they differ
+// Map Dex App IDs to TCGdex IDs
 function mapToTcgdexId(cardId: string): string {
-  // Common mappings
-  if (cardId.startsWith('me25-')) return cardId.replace('me25-','swsh45-')
-  if (cardId.startsWith('me4-'))  return cardId.replace('me4-','swsh12pt5-')
-  if (cardId.startsWith('me3-'))  return cardId.replace('me3-','swsh35-')
-  if (cardId.startsWith('me2-'))  return cardId.replace('me2-','swsh8-')
-  if (cardId.startsWith('me1-'))  return cardId.replace('me1-','swsh1-')
-  if (cardId.startsWith('sv85-')) return cardId.replace('sv85-','sv8pt5-')
-  if (cardId.startsWith('sv45-')) return cardId.replace('sv45-','sv4pt5-')
-  if (cardId.startsWith('sm35-')) return cardId.replace('sm35-','sm3pt5-')
-  if (cardId.startsWith('swsh45sv-')) return cardId.replace('swsh45sv-','swsh45sv-')
+  // Scarlet & Violet
+  if (cardId.startsWith('sv85-'))      return cardId.replace('sv85-','sv8pt5-')
+  if (cardId.startsWith('sv45-'))      return cardId.replace('sv45-','sv4pt5-')
+  // Sword & Shield
+  if (cardId.startsWith('swsh45sv-'))  return cardId.replace('swsh45sv-','swsh45sv-')
+  if (cardId.startsWith('swsh9tg-'))   return cardId.replace('swsh9tg-','swsh9tg-')
+  // Sun & Moon
+  if (cardId.startsWith('sm35-'))      return cardId.replace('sm35-','sm3pt5-')
+  if (cardId.startsWith('sma-'))       return cardId.replace('sma-','sma-')
+  // Japanische Sets die NICHT auf TCGdex existieren → kein Bild
+  if (cardId.startsWith('me1-'))       return ''
+  if (cardId.startsWith('me2-'))       return ''
+  if (cardId.startsWith('me3-'))       return ''
+  if (cardId.startsWith('me4-'))       return ''
+  if (cardId.startsWith('me25-'))      return ''
+  if (cardId.startsWith('mcd23-'))     return ''
+  // Alles andere direkt verwenden (dp, sv, swsh, ex, base etc.)
   return cardId
 }
 
