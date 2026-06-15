@@ -16,6 +16,7 @@ type PriceLive = {
 type ManualPrice = {
   id?: number; card_id: string; entered_at: string
   language: string; condition: string; price: number; note: string
+  is_holo: boolean; is_reverse_holo: boolean
 }
 type Card = {
   id: string; card_id: string; name: string; set_name: string
@@ -111,13 +112,18 @@ function matchPrices(cards: Omit<Card,'price_live'>[], products: CMProduct[], pr
       const p=priceMap.get(m.idProduct)
       if(p&&(p.trend!=null||p.low!=null)){best=m;bestP=p;break}
     }
-    if(!best||!bestP) return {...card,price_live:null}
+    if(!best||!bestP) return {
+      ...card,
+      cm_url:`https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(card.name)}&idCategory=1`,
+      price_live:null
+    }
     const get=(k:string):number|null=>{
       const hv=isHolo?(bestP as any)[`${k}-holo`]:null
       return hv??(bestP as any)[k]??null
     }
     // Korrekte CM URL mit idProduct — funktioniert immer zuverlässig
     const cmUrl=`https://www.cardmarket.com/de/Pokemon/Products/Singles/-/${best.idProduct}`
+    // Also store search URL as fallback
     return {
       ...card, cm_url:cmUrl,
       price_live:{
@@ -141,7 +147,7 @@ async function processImgQueue() {
     const id = imgQueue.shift()!
     if (imgCache.has(id)) { imgListeners.get(id)?.forEach(fn=>fn()); continue }
     try {
-      const r = await fetch(`https://api.tcgdex.net/v2/en/cards/${id}`)
+      const r = await fetch(`https://api.tcgdex.net/v2/en/cards/${mapToTcgdexId(id)}`)
       const d = r.ok ? await r.json() : null
       imgCache.set(id, d?.image ? `${d.image}/high.webp` : null)
     } catch { imgCache.set(id, null) }
@@ -149,6 +155,21 @@ async function processImgQueue() {
     await new Promise(r=>setTimeout(r,80))
   }
   imgRunning = false
+}
+
+// Map Dex IDs to TCGdex IDs where they differ
+function mapToTcgdexId(cardId: string): string {
+  // Common mappings
+  if (cardId.startsWith('me25-')) return cardId.replace('me25-','swsh45-')
+  if (cardId.startsWith('me4-'))  return cardId.replace('me4-','swsh12pt5-')
+  if (cardId.startsWith('me3-'))  return cardId.replace('me3-','swsh35-')
+  if (cardId.startsWith('me2-'))  return cardId.replace('me2-','swsh8-')
+  if (cardId.startsWith('me1-'))  return cardId.replace('me1-','swsh1-')
+  if (cardId.startsWith('sv85-')) return cardId.replace('sv85-','sv8pt5-')
+  if (cardId.startsWith('sv45-')) return cardId.replace('sv45-','sv4pt5-')
+  if (cardId.startsWith('sm35-')) return cardId.replace('sm35-','sm3pt5-')
+  if (cardId.startsWith('swsh45sv-')) return cardId.replace('swsh45sv-','swsh45sv-')
+  return cardId
 }
 
 function useCardImage(cardId: string) {
@@ -245,6 +266,8 @@ function ManualPanel({cardId,existing,onSaved}:{cardId:string;existing:ManualPri
   const [price,setPrice]=useState('')
   const [date,setDate]=useState(new Date().toISOString().split('T')[0])
   const [note,setNote]=useState('')
+  const [isHolo,setIsHolo]=useState(false)
+  const [isReverseHolo,setIsReverseHolo]=useState(false)
   const [saving,setSaving]=useState(false)
 
   const inp:React.CSSProperties={background:'#0d0d14',border:'1px solid rgba(255,255,255,.1)',
@@ -260,7 +283,7 @@ function ManualPanel({cardId,existing,onSaved}:{cardId:string;existing:ManualPri
     try{
       const {createClient}=await import('@supabase/supabase-js')
       const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note})
+      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note,is_holo:isHolo,is_reverse_holo:isReverseHolo})
       if(error) throw error
       setPrice('');setNote('');onSaved()
     }catch(e:any){alert('Fehler: '+e.message)}
@@ -286,6 +309,8 @@ function ManualPanel({cardId,existing,onSaved}:{cardId:string;existing:ManualPri
                 <span style={{fontFamily:'monospace',fontSize:11,color:'#55556a'}}>{e.entered_at}</span>
                 <span style={{fontSize:11,background:'rgba(78,158,255,.12)',color:'#4e9eff',borderRadius:4,padding:'1px 7px'}}>{e.language}</span>
                 <span style={{fontSize:11,background:'rgba(255,212,38,.1)',color:'#ffd426',borderRadius:4,padding:'1px 7px'}}>{e.condition}</span>
+                {e.is_holo&&<span style={{fontSize:11,background:'rgba(255,212,38,.2)',color:'#ffe566',borderRadius:4,padding:'1px 7px'}}>Holo</span>}
+                {e.is_reverse_holo&&<span style={{fontSize:11,background:'rgba(180,123,255,.15)',color:'#b47bff',borderRadius:4,padding:'1px 7px'}}>Rev.Holo</span>}
                 <span style={{fontFamily:'monospace',fontWeight:600,fontSize:13,color:'#29e086',flex:1}}>{fmt(e.price)}</span>
                 {e.note&&<span style={{fontSize:11,color:'#55556a'}}>{e.note}</span>}
                 <button onClick={()=>e.id&&del(e.id)}
@@ -305,6 +330,8 @@ function ManualPanel({cardId,existing,onSaved}:{cardId:string;existing:ManualPri
           {l:'Zustand',el:<select value={cond} onChange={e=>setCond(e.target.value)} style={{...sel,width:150}}>{CONDITIONS.map(c=><option key={c.v} value={c.v}>{c.l} ({c.v})</option>)}</select>},
           {l:'Preis (€)',el:<input type="text" value={price} onChange={e=>setPrice(e.target.value)} placeholder="3,50" style={{...inp,width:90}}/>},
           {l:'Notiz',el:<input type="text" value={note} onChange={e=>setNote(e.target.value)} placeholder="optional" style={{...inp,width:160}}/>},
+          {l:'Holo',el:<select value={isHolo?'ja':'nein'} onChange={e=>setIsHolo(e.target.value==='ja')} style={{...sel,width:90}}><option value="nein">Nein</option><option value="ja">Ja</option></select>},
+          {l:'Reverse Holo',el:<select value={isReverseHolo?'ja':'nein'} onChange={e=>setIsReverseHolo(e.target.value==='ja')} style={{...sel,width:90}}><option value="nein">Nein</option><option value="ja">Ja</option></select>},
         ].map(({l,el})=>(
           <div key={l} style={{display:'flex',flexDirection:'column',gap:4}}>
             <label style={{fontSize:10,color:'#55556a'}}>{l}</label>
@@ -578,7 +605,7 @@ export default function Dashboard() {
                   {([
                     {k:'name',l:'Karte'},{k:'set_name',l:'Set'},
                     {k:'rarity',l:'Seltenheit'},{k:'quantity',l:'Qty'},
-                    {k:'dex_price',l:'DEX'},{k:'price_trend',l:'CM Trend'},
+                    {k:'price_trend',l:'CM Trend'},
                     {k:'diff',l:'CM vs DEX'},{k:'manualDiff',l:'Preisentw.'},
                   ] as {k:SortKey;l:string}[]).map(({k,l})=>(
                     <th key={k} onClick={()=>toggleSort(k)} style={{padding:'10px 14px',textAlign:'left',
@@ -647,7 +674,6 @@ export default function Dashboard() {
                             background:card.quantity>0?'rgba(41,224,134,.12)':'rgba(255,61,61,.1)',
                             color:card.quantity>0?'#29e086':'#ff6666'}}>{card.quantity}</span>
                         </td>
-                        <td style={{padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#55556a'}}>{fmt(card.dex_price)}</td>
                         <td style={{padding:'10px 14px'}}>
                           {pTrend!=null?<span style={{fontFamily:'monospace',fontWeight:700,fontSize:14,color:'#29e086'}}>{fmt(pTrend)}</span>:<span style={{color:'#404055'}}>–</span>}
                         </td>
@@ -687,7 +713,7 @@ export default function Dashboard() {
                       {/* Detail Panel */}
                       {isSel&&(
                         <tr key={`${card.id}-d`} style={{background:'rgba(78,158,255,.04)',borderBottom:'1px solid rgba(255,255,255,.03)'}}>
-                          <td colSpan={10} style={{padding:'20px 20px 20px 74px'}}>
+                          <td colSpan={9} style={{padding:'20px 20px 20px 74px'}}>
                             <div style={{display:'flex',gap:24,alignItems:'flex-start'}}>
                               <CardImageLarge cardId={card.card_id} name={card.name}/>
                               <div style={{flex:1}}>
