@@ -135,10 +135,33 @@ function matchPrices(cards: Omit<Card,'price_live'>[], products: CMProduct[], pr
 }
 
 // ── Image Loading Queue ───────────────────────────────────────
+// In-Memory Cache (Session)
 const imgCache = new Map<string,string|null>()
 const imgQueue: string[] = []
 const imgListeners = new Map<string,Set<()=>void>>()
 let imgRunning = false
+
+// Persistent Cache via localStorage
+function getImgFromStorage(id: string): string|null|undefined {
+  try {
+    const v = localStorage.getItem(`pkimg_${id}`)
+    if (v === 'null') return null
+    return v ?? undefined
+  } catch { return undefined }
+}
+function setImgToStorage(id: string, url: string|null) {
+  try { localStorage.setItem(`pkimg_${id}`, url ?? 'null') } catch {}
+}
+
+// Pre-load from localStorage into memory cache
+function initImgCache(ids: string[]) {
+  for (const id of ids) {
+    if (!imgCache.has(id)) {
+      const stored = getImgFromStorage(id)
+      if (stored !== undefined) imgCache.set(id, stored)
+    }
+  }
+}
 
 // Konvertiert Dex-App ID → Pokemon TCG API Set/Nummer Format
 function cardIdToPokemonTcgUrl(cardId: string): string[] {
@@ -212,6 +235,7 @@ async function processImgQueue() {
       if (imgCache.has(id)) { imgListeners.get(id)?.forEach(fn=>fn()); return }
       const url = await findWorkingImageUrl(id)
       imgCache.set(id, url)
+      setImgToStorage(id, url)
       imgListeners.get(id)?.forEach(fn=>fn())
     }))
 
@@ -522,6 +546,7 @@ export default function Dashboard() {
   useEffect(()=>{
     if(!cards.length) return
     const unique=Array.from(new Set(cards.map(c=>c.card_id)))
+    initImgCache(unique) // Load from localStorage first
     for (const id of unique) {
       if(!imgCache.has(id)&&!imgQueue.includes(id)) imgQueue.push(id)
     }
