@@ -148,6 +148,10 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
   if (id.startsWith('sv45-'))     id = id.replace('sv45-','sv4pt5-')
   if (id.startsWith('sm35-'))     id = id.replace('sm35-','sm3pt5-')
 
+  // Neue Sets die noch nicht in APIs sind → kein Bild
+  const tooNew = ['me25','me4','mcd23']
+  if (tooNew.some(s => id.startsWith(s+'-'))) return []
+
   // Baue direkte Bild-URLs (mehrere Formate probieren)
   const parts = id.split('-')
   const set = parts[0]
