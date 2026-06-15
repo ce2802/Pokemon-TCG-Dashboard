@@ -261,7 +261,7 @@ function FileBtn({label,loaded,onFile,accept='.json,.csv'}:{label:string;loaded:
 }
 
 // ── Manual Price Panel ────────────────────────────────────────
-function ManualPanel({cardId,existing,onSaved}:{cardId:string;existing:ManualPrice[];onSaved:()=>void}) {
+function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:ManualPrice[];onSaved:()=>void;userCode:string}) {
   const [lang,setLang]=useState('D')
   const [cond,setCond]=useState('NM')
   const [price,setPrice]=useState('')
@@ -284,7 +284,7 @@ function ManualPanel({cardId,existing,onSaved}:{cardId:string;existing:ManualPri
     try{
       const {createClient}=await import('@supabase/supabase-js')
       const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note,is_holo:isHolo,is_reverse_holo:isReverseHolo})
+      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note,is_holo:isHolo,is_reverse_holo:isReverseHolo,user_code:userCode})
       if(error) throw error
       setPrice('');setNote('');onSaved()
     }catch(e:any){alert('Fehler: '+e.message)}
@@ -352,6 +352,79 @@ function ManualPanel({cardId,existing,onSaved}:{cardId:string;existing:ManualPri
   )
 }
 
+
+// ── User Code System ──────────────────────────────────────────
+function useUserCode() {
+  const [code, setCode] = useState<string|null>(null)
+  const [showPrompt, setShowPrompt] = useState(false)
+
+  useEffect(() => {
+    const saved = localStorage.getItem('pokedex_user_code')
+    if (saved) setCode(saved)
+    else setShowPrompt(true)
+  }, [])
+
+  function saveCode(c: string) {
+    const trimmed = c.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')
+    if (!trimmed) return
+    localStorage.setItem('pokedex_user_code', trimmed)
+    setCode(trimmed)
+    setShowPrompt(false)
+  }
+
+  function switchCode() {
+    setShowPrompt(true)
+  }
+
+  return { code, showPrompt, saveCode, switchCode }
+}
+
+function CodePrompt({ onSave, current }: { onSave: (c: string) => void; current?: string|null }) {
+  const [input, setInput] = useState(current || '')
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.85)',zIndex:9999,
+      display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div style={{background:'#13131f',border:'1px solid rgba(255,255,255,.1)',borderRadius:16,
+        padding:'40px',maxWidth:420,width:'90%',textAlign:'center'}}>
+        <svg width="52" height="52" viewBox="0 0 100 100" style={{marginBottom:20,filter:'drop-shadow(0 0 12px rgba(255,61,61,.5))'}}>
+          <circle cx="50" cy="50" r="47" fill="#1a1a2a" stroke="rgba(255,255,255,.08)" strokeWidth="2"/>
+          <path d="M3 50 Q3 3 50 3 Q97 3 97 50Z" fill="#ff3d3d"/>
+          <rect x="3" y="46" width="94" height="8" fill="#0d0d14"/>
+          <circle cx="50" cy="50" r="13" fill="#1a1a2a" stroke="rgba(255,255,255,.12)" strokeWidth="2"/>
+          <circle cx="50" cy="50" r="5.5" fill="rgba(255,255,255,.12)"/>
+        </svg>
+        <div style={{fontSize:22,fontWeight:800,marginBottom:8}}>PokéDex Preise</div>
+        <div style={{fontSize:13,color:'#8888aa',marginBottom:24,lineHeight:1.6}}>
+          Gib deinen persönlichen Code ein.<br/>
+          <span style={{fontSize:11,color:'#55556a'}}>Nur du siehst deine manuellen Preise.</span>
+        </div>
+        <input
+          type="text"
+          value={input}
+          onChange={e=>setInput(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g,''))}
+          onKeyDown={e=>e.key==='Enter'&&onSave(input)}
+          placeholder="z.B. christian oder trainer123"
+          autoFocus
+          style={{width:'100%',background:'#0d0d14',border:'1px solid rgba(255,255,255,.15)',
+            borderRadius:8,color:'#f0f0f8',padding:'12px 16px',fontFamily:'inherit',
+            fontSize:14,outline:'none',marginBottom:12,textAlign:'center',letterSpacing:2}}
+        />
+        <div style={{fontSize:10,color:'#55556a',marginBottom:20}}>
+          Nur Buchstaben, Zahlen, - und _ erlaubt
+        </div>
+        <button onClick={()=>onSave(input)} disabled={!input.trim()}
+          style={{width:'100%',padding:'12px',background:'linear-gradient(135deg,#ff3d3d,#cc2200)',
+            color:'#fff',border:'none',borderRadius:8,fontWeight:700,fontSize:14,
+            cursor:input.trim()?'pointer':'not-allowed',opacity:input.trim()?1:.5,
+            fontFamily:'inherit',boxShadow:'0 4px 20px rgba(255,61,61,.3)'}}>
+          Los geht's →
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════
 //  MAIN DASHBOARD
 // ══════════════════════════════════════════════════════════════
@@ -372,6 +445,7 @@ export default function Dashboard() {
   const [manualPrices,setManualPrices] = useState<ManualPrice[]>([])
   const [hidden,setHidden]         = useState<Set<string>>(new Set())
   const [showHidden,setShowHidden] = useState(false)
+  const { code: userCode, showPrompt, saveCode, switchCode } = useUserCode()
 
   useEffect(()=>{
     if(rawCards.length&&cmProducts.length&&cmPrices.length)
@@ -382,12 +456,12 @@ export default function Dashboard() {
     try{
       const {createClient}=await import('@supabase/supabase-js')
       const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-      const {data}=await db.from('manual_prices').select('*').order('entered_at',{ascending:false})
+      const {data}=await db.from('manual_prices').select('*').eq('user_code', userCode||'default').order('entered_at',{ascending:false})
       if(data) setManualPrices(data)
     }catch{}
   },[])
 
-  useEffect(()=>{loadManual()},[loadManual])
+  useEffect(()=>{if(userCode)loadManual()},[loadManual,userCode])
 
   // Prefetch images when cards load
   useEffect(()=>{
@@ -468,6 +542,7 @@ export default function Dashboard() {
 
   return (
     <div style={{minHeight:'100vh',background:'#0d0d14',color:'#f0f0f8',fontFamily:"'DM Sans',sans-serif"}}>
+      {showPrompt && <CodePrompt onSave={saveCode} current={userCode}/>}
       <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:0,
         background:'radial-gradient(ellipse 60% 40% at 10% 10%,rgba(255,61,61,.06) 0%,transparent 70%),radial-gradient(ellipse 50% 60% at 90% 90%,rgba(78,158,255,.05) 0%,transparent 70%)'}}/>
 
@@ -501,6 +576,15 @@ export default function Dashboard() {
                 <div style={{fontSize:9,color:'rgba(255,255,255,.3)',textTransform:'uppercase',letterSpacing:1,marginTop:3}}>{lbl}</div>
               </div>
             ))}
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:8}}>
+            <div style={{background:'rgba(255,212,38,.1)',border:'1px solid rgba(255,212,38,.2)',
+              borderRadius:99,padding:'6px 14px',display:'flex',alignItems:'center',gap:8}}>
+              <div style={{width:7,height:7,borderRadius:'50%',background:'#ffd426'}}/>
+              <span style={{fontSize:11,color:'#ffd426',fontWeight:700,fontFamily:'monospace'}}>{userCode||'...'}</span>
+              <button onClick={switchCode} style={{background:'none',border:'none',cursor:'pointer',
+                color:'#55556a',fontSize:10,fontFamily:'inherit',padding:0}}>wechseln</button>
+            </div>
           </div>
         </div>
       </header>
@@ -743,7 +827,7 @@ export default function Dashboard() {
 
                                 {/* Manual prices */}
                                 <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:16,marginBottom:12}}>
-                                  <ManualPanel cardId={card.id} existing={cardManual} onSaved={loadManual}/>
+                                  <ManualPanel cardId={card.id} existing={cardManual} onSaved={loadManual} userCode={userCode||'default'}/>
                                 </div>
 
                                 {/* Hide/Unhide button */}
