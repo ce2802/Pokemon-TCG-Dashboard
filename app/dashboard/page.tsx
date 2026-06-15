@@ -140,28 +140,80 @@ const imgQueue: string[] = []
 const imgListeners = new Map<string,Set<()=>void>>()
 let imgRunning = false
 
+// Konvertiert Dex-App ID → Pokemon TCG API Set/Nummer Format
+function cardIdToPokemonTcgUrl(cardId: string): string[] {
+  // Normalisiere ID
+  let id = cardId
+  if (id.startsWith('sv85-'))     id = id.replace('sv85-','sv8pt5-')
+  if (id.startsWith('sv45-'))     id = id.replace('sv45-','sv4pt5-')
+  if (id.startsWith('sm35-'))     id = id.replace('sm35-','sm3pt5-')
+
+  // Baue direkte Bild-URLs (mehrere Formate probieren)
+  const [set, num] = id.split('-')
+  if (!set || !num) return []
+
+  const urls = [
+    // Pokemon TCG API direkte Bild-URL
+    `https://images.pokemontcg.io/${set}/${num}_hires.png`,
+    `https://images.pokemontcg.io/${set}/${num}.png`,
+    // TCGdex
+    `https://assets.tcgdex.net/en/${set}/${set}-${num}/high.webp`,
+    `https://assets.tcgdex.net/en/${set}/${id}/high.webp`,
+  ]
+  return urls
+}
+
+// Testet URLs der Reihe nach und nimmt die erste die lädt
+async function findWorkingImageUrl(cardId: string): Promise<string|null> {
+  // Japanische Sets → kein Bild verfügbar
+  const jpSets = ['me1','me2','me3','me4','me25','mcd23']
+  if (jpSets.some(s => cardId.startsWith(s+'-'))) return null
+
+  const urls = cardIdToPokemonTcgUrl(cardId)
+
+  // Alle URLs parallel testen
+  const results = await Promise.allSettled(
+    urls.map(url =>
+      fetch(url, {method:'HEAD'}).then(r => r.ok ? url : Promise.reject())
+    )
+  )
+
+  for (const result of results) {
+    if (result.status === 'fulfilled') return result.value
+  }
+
+  // Fallback: Pokemon TCG API JSON
+  try {
+    const r = await fetch(`https://api.pokemontcg.io/v2/cards/${cardId}`)
+    if (r.ok) {
+      const d = await r.json()
+      return d?.data?.images?.large || d?.data?.images?.small || null
+    }
+  } catch {}
+
+  return null
+}
+
+// Batch-Größe: mehrere Karten gleichzeitig laden
+const BATCH_SIZE = 5
+
 async function processImgQueue() {
   if (imgRunning) return
   imgRunning = true
+
   while (imgQueue.length > 0) {
-    const id = imgQueue.shift()!
-    if (imgCache.has(id)) { imgListeners.get(id)?.forEach(fn=>fn()); continue }
-    try {
-      // Methode 1: Pokemon TCG API (direktes JSON)
-      const r = await fetch(`https://api.pokemontcg.io/v2/cards/${id}`)
-      if (r.ok) {
-        const d = await r.json()
-        const img = d?.data?.images?.large || d?.data?.images?.small || null
-        imgCache.set(id, img)
-      } else {
-        // Methode 2: TCGdex als Fallback
-        const r2 = await fetch(`https://api.tcgdex.net/v2/en/cards/${id}`)
-        const d2 = r2.ok ? await r2.json() : null
-        imgCache.set(id, d2?.image ? `${d2.image}/high.webp` : null)
-      }
-    } catch { imgCache.set(id, null) }
-    imgListeners.get(id)?.forEach(fn=>fn())
-    await new Promise(r=>setTimeout(r,100))
+    // Nimm bis zu BATCH_SIZE IDs auf einmal
+    const batch = imgQueue.splice(0, BATCH_SIZE)
+
+    await Promise.all(batch.map(async id => {
+      if (imgCache.has(id)) { imgListeners.get(id)?.forEach(fn=>fn()); return }
+      const url = await findWorkingImageUrl(id)
+      imgCache.set(id, url)
+      imgListeners.get(id)?.forEach(fn=>fn())
+    }))
+
+    // Kleine Pause zwischen Batches
+    if (imgQueue.length > 0) await new Promise(r=>setTimeout(r,50))
   }
   imgRunning = false
 }
