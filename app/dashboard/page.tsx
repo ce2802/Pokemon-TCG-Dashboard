@@ -542,7 +542,7 @@ export default function Dashboard() {
       const {data}=await db.from('manual_prices').select('*').eq('user_code', userCode||'default').order('entered_at',{ascending:false})
       if(data) setManualPrices(data)
     }catch{}
-  },[])
+  },[userCode])
 
   useEffect(()=>{if(userCode)loadManual()},[loadManual,userCode])
 
