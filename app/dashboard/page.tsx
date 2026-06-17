@@ -25,7 +25,7 @@ type Card = {
   category: string; dex_price: number|null; image_url: string|null
   cm_url: string|null; price_live: PriceLive|null
 }
-type SortKey = 'name'|'set_name'|'rarity'|'quantity'|'dex_price'|'price_trend'|'diff'|'manualDiff'
+type SortKey = 'name'|'set_name'|'rarity'|'quantity'|'dex_price'|'price_trend'|'diff'|'manualDiff'|'purchasePrice'|'purchasePct'
 type SortDir = 'asc'|'desc'
 type CMProduct = { idProduct: number; name: string; idExpansion: number }
 type CMPrice = {
@@ -632,6 +632,19 @@ export default function Dashboard() {
       const dm=(c:Card)=>{const all=manualPrices.filter(m=>m.card_id===c.id);return all.length>=2?all[0].price-all[1].price:null}
       av=dm(a);bv=dm(b)
     }
+    else if(sortKey==='purchasePrice'){
+      const pp=(c:Card)=>manualPrices.filter(m=>m.card_id===c.id).find(m=>m.purchase_price!=null)?.purchase_price??null
+      av=pp(a);bv=pp(b)
+    }
+    else if(sortKey==='purchasePct'){
+      const pct=(c:Card)=>{
+        const all=manualPrices.filter(m=>m.card_id===c.id)
+        const pp=all.find(m=>m.purchase_price!=null)?.purchase_price
+        const latest=all[0]
+        return (pp!=null&&latest)?((latest.price-pp)/pp)*100:null
+      }
+      av=pct(a);bv=pct(b)
+    }
     else{av=(a as any)[sortKey];bv=(b as any)[sortKey]}
     if(av==null) return 1;if(bv==null) return -1
     if(typeof av==='string') av=av.toLowerCase()
@@ -809,7 +822,7 @@ export default function Dashboard() {
                     {k:'name',l:'Karte'},{k:'set_name',l:'Set'},
                     {k:'rarity',l:'Seltenheit'},{k:'quantity',l:'Qty'},
                     {k:'price_trend',l:'CM Trend'},
-                    {k:'diff',l:'CM vs DEX'},{k:'manualDiff',l:'Preisentw.'},
+                    {k:'purchasePrice',l:'Kaufpreis'},{k:'purchasePct',l:'Entwicklung'},
                   ] as {k:SortKey;l:string}[]).map(({k,l})=>(
                     <th key={k} onClick={()=>toggleSort(k)} style={{padding:'10px 14px',textAlign:'left',
                       fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'1.5px',
@@ -818,7 +831,7 @@ export default function Dashboard() {
                     </th>
                   ))}
                   <th style={{padding:'10px 14px',textAlign:'left',fontSize:10,fontWeight:700,
-                    textTransform:'uppercase',letterSpacing:'1.5px',color:'#55556a'}}>Manuell / Link</th>
+                    textTransform:'uppercase',letterSpacing:'1.5px',color:'#55556a'}}>Letzter Preis</th>
                 </tr>
               </thead>
               <tbody>
@@ -829,6 +842,8 @@ export default function Dashboard() {
                   const cardManual=manualPrices.filter(m=>m.card_id===card.id)
                   const latestM=cardManual[0], prevM=cardManual[1]
                   const manualDiff=latestM&&prevM?latestM.price-prevM.price:null
+                  const purchasePrice=cardManual.find(m=>m.purchase_price!=null)?.purchase_price??null
+                  const purchasePct=(purchasePrice!=null&&latestM)?((latestM.price-purchasePrice)/purchasePrice)*100:null
                   const isSel=selected?.id===card.id
                   const isHidden=hidden.has(card.id)
 
@@ -842,6 +857,17 @@ export default function Dashboard() {
                       border:`1px solid ${up?'rgba(41,224,134,.2)':dn?'rgba(255,61,61,.2)':'rgba(255,255,255,.07)'}`}}>
                       {up?<TrendingUp size={10}/>:dn?<TrendingDown size={10}/>:<Minus size={10}/>}
                       {v>=0?'+':''}{v.toFixed(2).replace('.',',')} €
+                    </span>
+                  }
+                  const DiffBadgePct=({v}:{v:number})=>{
+                    const up=v>0.5,dn=v<-0.5
+                    return <span style={{fontFamily:'monospace',fontSize:11,fontWeight:600,
+                      borderRadius:6,padding:'3px 8px',display:'inline-flex',alignItems:'center',gap:3,
+                      background:up?'rgba(41,224,134,.12)':dn?'rgba(255,61,61,.1)':'rgba(255,255,255,.05)',
+                      color:up?'#29e086':dn?'#ff6666':'#55556a',
+                      border:`1px solid ${up?'rgba(41,224,134,.2)':dn?'rgba(255,61,61,.2)':'rgba(255,255,255,.07)'}`}}>
+                      {up?<TrendingUp size={10}/>:dn?<TrendingDown size={10}/>:<Minus size={10}/>}
+                      {v>=0?'+':''}{v.toFixed(1)}%
                     </span>
                   }
 
@@ -880,13 +906,12 @@ export default function Dashboard() {
                         <td style={{padding:'10px 14px'}}>
                           {pTrend!=null?<span style={{fontFamily:'monospace',fontWeight:700,fontSize:14,color:'#29e086'}}>{fmt(pTrend)}</span>:<span style={{color:'#404055'}}>–</span>}
                         </td>
-                        <td style={{padding:'10px 14px'}}>
-                          <DiffBadge v={diff} empty={<span style={{color:'#404055'}}>–</span>}/>
+                        <td style={{padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#8888aa'}}>
+                          {purchasePrice!=null?fmt(purchasePrice):<span style={{color:'#404055'}}>–</span>}
                         </td>
                         <td style={{padding:'10px 14px'}}>
-                          {manualDiff!=null
-                            ?<DiffBadge v={manualDiff} empty={null}/>
-                            :latestM?<span style={{fontSize:10,color:'#55556a'}}>1. Eintrag</span>
+                          {purchasePct!=null
+                            ?<DiffBadgePct v={purchasePct}/>
                             :<span style={{color:'#404055'}}>–</span>}
                         </td>
                         <td style={{padding:'10px 14px'}}>
@@ -899,16 +924,8 @@ export default function Dashboard() {
                               </span>
                             )}
                             <span style={{fontSize:10,color:isSel?'#4e9eff':'#55556a'}}>
-                              {isSel?'▲':'▼'}
+                              {isSel?'▲ Einklappen':'▼ Details'}
                             </span>
-                            {card.cm_url&&(
-                              <a href={card.cm_url} target="_blank" rel="noopener"
-                                onClick={e=>e.stopPropagation()}
-                                style={{color:'#4e9eff',fontSize:11,textDecoration:'none',
-                                  opacity:.8,display:'inline-flex',alignItems:'center',gap:2}}>
-                                CM<ExternalLink size={9}/>
-                              </a>
-                            )}
                           </div>
                         </td>
                       </tr>
