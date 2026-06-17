@@ -17,6 +17,7 @@ type ManualPrice = {
   id?: number; card_id: string; entered_at: string
   language: string; condition: string; price: number; note: string
   is_holo: boolean; is_reverse_holo: boolean
+  purchase_price?: number | null
 }
 type Card = {
   id: string; card_id: string; name: string; set_name: string
@@ -352,7 +353,11 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
   const [note,setNote]=useState('')
   const [isHolo,setIsHolo]=useState(false)
   const [isReverseHolo,setIsReverseHolo]=useState(false)
+  const [purchasePrice,setPurchasePrice]=useState('')
   const [saving,setSaving]=useState(false)
+
+  // Kaufpreis: einmalig pro Karte - wenn schon einer existiert, vorausfüllen & sperren
+  const existingPurchasePrice = existing.find(e => e.purchase_price != null)?.purchase_price
 
   const inp:React.CSSProperties={background:'#0d0d14',border:'1px solid rgba(255,255,255,.1)',
     borderRadius:7,color:'#f0f0f8',padding:'7px 10px',fontSize:12,fontFamily:'inherit'}
@@ -367,7 +372,8 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
     try{
       const {createClient}=await import('@supabase/supabase-js')
       const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note,is_holo:isHolo,is_reverse_holo:isReverseHolo,user_code:userCode})
+      const pp = existingPurchasePrice != null ? existingPurchasePrice : (purchasePrice ? parseFloat(purchasePrice.replace(',','.')) : null)
+      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note,is_holo:isHolo,is_reverse_holo:isReverseHolo,user_code:userCode,purchase_price:pp})
       if(error) throw error
       setPrice('');setNote('');onSaved()
     }catch(e:any){alert('Fehler: '+e.message)}
@@ -383,6 +389,33 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
 
   return (
     <div>
+      {existingPurchasePrice != null && existing.length > 0 && (() => {
+        const latest = existing[0]
+        const pctChange = ((latest.price - existingPurchasePrice) / existingPurchasePrice) * 100
+        const up = pctChange > 0.5, dn = pctChange < -0.5
+        return (
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14,background:'#0d0d14',
+            borderRadius:8,padding:'10px 14px',border:'1px solid rgba(255,255,255,.06)'}}>
+            <div>
+              <div style={{fontSize:9,color:'#55556a',textTransform:'uppercase',letterSpacing:1}}>Kaufpreis</div>
+              <div style={{fontFamily:'monospace',fontWeight:700,fontSize:14,color:'#8888aa'}}>{fmt(existingPurchasePrice)}</div>
+            </div>
+            <div style={{fontSize:18,color:'#404055'}}>→</div>
+            <div>
+              <div style={{fontSize:9,color:'#55556a',textTransform:'uppercase',letterSpacing:1}}>Aktuell</div>
+              <div style={{fontFamily:'monospace',fontWeight:700,fontSize:14,color:'#29e086'}}>{fmt(latest.price)}</div>
+            </div>
+            <span style={{fontFamily:'monospace',fontSize:13,fontWeight:700,borderRadius:6,padding:'4px 10px',
+              marginLeft:'auto',display:'inline-flex',alignItems:'center',gap:4,
+              background:up?'rgba(41,224,134,.12)':dn?'rgba(255,61,61,.1)':'rgba(255,255,255,.05)',
+              color:up?'#29e086':dn?'#ff6666':'#55556a',
+              border:`1px solid ${up?'rgba(41,224,134,.2)':dn?'rgba(255,61,61,.2)':'rgba(255,255,255,.07)'}`}}>
+              {up?<TrendingUp size={12}/>:dn?<TrendingDown size={12}/>:<Minus size={12}/>}
+              {pctChange>=0?'+':''}{pctChange.toFixed(1)}%
+            </span>
+          </div>
+        )
+      })()}
       {existing.length>0&&(
         <div style={{marginBottom:14}}>
           <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'1px',color:'#8888aa',marginBottom:8}}>Gespeicherte Preise</div>
@@ -414,6 +447,7 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
           {l:'Zustand',el:<select value={cond} onChange={e=>setCond(e.target.value)} style={{...sel,width:150}}>{CONDITIONS.map(c=><option key={c.v} value={c.v}>{c.l} ({c.v})</option>)}</select>},
           {l:'Preis (€)',el:<input type="text" value={price} onChange={e=>setPrice(e.target.value)} placeholder="3,50" style={{...inp,width:90}}/>},
           {l:'Notiz',el:<input type="text" value={note} onChange={e=>setNote(e.target.value)} placeholder="optional" style={{...inp,width:160}}/>},
+          ...(existingPurchasePrice == null ? [{l:'Kaufpreis (€)',el:<input type="text" value={purchasePrice} onChange={(e:any)=>setPurchasePrice(e.target.value)} placeholder="z.B. 2,00" style={{...inp,width:100}}/>}] : []),
           {l:'Holo',el:<select value={isHolo?'ja':'nein'} onChange={e=>setIsHolo(e.target.value==='ja')} style={{...sel,width:90}}><option value="nein">Nein</option><option value="ja">Ja</option></select>},
           {l:'Reverse Holo',el:<select value={isReverseHolo?'ja':'nein'} onChange={e=>setIsReverseHolo(e.target.value==='ja')} style={{...sel,width:90}}><option value="nein">Nein</option><option value="ja">Ja</option></select>},
         ].map(({l,el})=>(
