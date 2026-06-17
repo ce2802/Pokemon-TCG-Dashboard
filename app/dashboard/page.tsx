@@ -171,18 +171,21 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
   if (id.startsWith('sv45-'))     id = id.replace('sv45-','sv4pt5-')
   if (id.startsWith('sm35-'))     id = id.replace('sm35-','sm3pt5-')
 
-  // Nur wirklich neue Sets ausschließen (Jan/Mai 2026)
+  // Nur wirklich neue Sets ausschließen (Mai 2026)
   const tooNew = ['me4']
   if (tooNew.some(s => id.startsWith(s+'-'))) return []
 
-  // Baue direkte Bild-URLs (mehrere Formate probieren)
   const parts = id.split('-')
   const set = parts[0]
-  const num = parts.slice(1).join('-') // Handle IDs like swsh45sv-SV095
+  const num = parts.slice(1).join('-')
   if (!set || !num) return []
 
+  const setUpper = set.toUpperCase()
+
   const urls = [
-    // Pokemon TCG API direkte Bild-URLs (hires zuerst)
+    // Offizielle Pokemon.com Bilder (sehr zuverlässig, auch für sv8pt5/sv4pt5)
+    `https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/${setUpper}/${setUpper}_EN_${num}.png`,
+    // Pokemon TCG API
     `https://images.pokemontcg.io/${set}/${num}_hires.png`,
     `https://images.pokemontcg.io/${set}/${num}.png`,
     // TCGdex Fallback
@@ -191,6 +194,7 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
   ]
   return urls
 }
+
 
 // Testet URLs der Reihe nach und nimmt die erste die lädt
 async function findWorkingImageUrl(cardId: string): Promise<string|null> {
