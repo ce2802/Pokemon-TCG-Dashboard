@@ -198,22 +198,28 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
 
 
 // Testet URLs der Reihe nach und nimmt die erste die lädt
+// Testet eine Bild-URL via echtem Image-Element (zuverlässiger als HEAD-Request,
+// da viele CDNs HEAD nicht unterstützen aber GET via <img> funktioniert)
+function testImageUrl(url: string): Promise<boolean> {
+  return new Promise(resolve => {
+    const img = new Image()
+    const timeout = setTimeout(() => { img.src=''; resolve(false) }, 6000)
+    img.onload = () => { clearTimeout(timeout); resolve(true) }
+    img.onerror = () => { clearTimeout(timeout); resolve(false) }
+    img.src = url
+  })
+}
+
 async function findWorkingImageUrl(cardId: string): Promise<string|null> {
-  // Keine bekannten ausgeschlossenen Sets mehr - alle versuchen
   const urls = cardIdToPokemonTcgUrl(cardId)
+  if (!urls.length) return null
 
-  // Alle URLs parallel testen
-  const results = await Promise.allSettled(
-    urls.map(url =>
-      fetch(url, {method:'HEAD'}).then(r => r.ok ? url : Promise.reject())
-    )
-  )
+  // Teste alle URLs parallel via echtem Image-Load (zuverlässig, kein HEAD-Problem)
+  const results = await Promise.all(urls.map(async url => ({url, ok: await testImageUrl(url)})))
+  const working = results.find(r => r.ok)
+  if (working) return working.url
 
-  for (const result of results) {
-    if (result.status === 'fulfilled') return result.value
-  }
-
-  // Fallback: Pokemon TCG API JSON
+  // Fallback: Pokemon TCG API JSON (für Fälle wo direkte URL nicht greift)
   try {
     const r = await fetch(`https://api.pokemontcg.io/v2/cards/${cardId}`)
     if (r.ok) {
