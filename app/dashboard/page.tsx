@@ -180,15 +180,15 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
   const setUpper = set.toUpperCase()
 
   const urls = [
-    // Offizielle Pokemon.com Bilder (sehr zuverlässig, auch für sv8pt5/sv4pt5)
-    `https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/${setUpper}/${setUpper}_EN_${num}.png`,
-    // Pokemon TCG API
+    // Pokemon TCG API (zuverlässigste Quelle, korrekte Bilder)
     `https://images.pokemontcg.io/${set}/${num}_hires.png`,
     `https://images.pokemontcg.io/${set}/${num}.png`,
-    // TCGdex Fallback
-    `https://assets.tcgdex.net/en/${set}/${id}/high.webp`,
-    `https://assets.tcgdex.net/en/${set}/${set}-${num}/high.webp`,
+    // Offizielle Pokemon.com Bilder als Fallback
+    `https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/${setUpper}/${setUpper}_EN_${num}.png`,
   ]
+  // TCGdex absichtlich entfernt — hat bekannten Datenfehler:
+  // manche Karten (besonders JP-nahe Sets wie me4, me25, me3) zeigen
+  // Kartenrückseite statt Vorderseite ('japanese-back' Bug)
   return urls
 }
 
