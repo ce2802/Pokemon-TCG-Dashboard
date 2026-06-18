@@ -172,10 +172,6 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
   if (id.startsWith('sv45-'))     id = id.replace('sv45-','sv4pt5-')
   if (id.startsWith('sm35-'))     id = id.replace('sm35-','sm3pt5-')
 
-  // Nur wirklich neue Sets ausschließen (Mai 2026)
-  const tooNew = ['me4']
-  if (tooNew.some(s => id.startsWith(s+'-'))) return []
-
   const parts = id.split('-')
   const set = parts[0]
   const num = parts.slice(1).join('-')
@@ -214,10 +210,13 @@ async function findWorkingImageUrl(cardId: string): Promise<string|null> {
   const urls = cardIdToPokemonTcgUrl(cardId)
   if (!urls.length) return null
 
-  // Teste alle URLs parallel via echtem Image-Load (zuverlässig, kein HEAD-Problem)
-  const results = await Promise.all(urls.map(async url => ({url, ok: await testImageUrl(url)})))
-  const working = results.find(r => r.ok)
-  if (working) return working.url
+  // WICHTIG: Sequentiell testen in fester Priorität (nicht parallel!)
+  // TCGdex hat bekannte Datenfehler (falsche/Rückseiten-Scans bei manchen JP-Sets),
+  // daher muss Pokemon.com/PokemonTCG IMMER zuerst geprüft werden, TCGdex nur als letzter Fallback
+  for (const url of urls) {
+    const ok = await testImageUrl(url)
+    if (ok) return url
+  }
 
   // Fallback: Pokemon TCG API JSON (für Fälle wo direkte URL nicht greift)
   try {
