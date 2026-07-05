@@ -994,17 +994,39 @@ export default function Dashboard() {
             <div style={{fontSize:13,color:'#55556a'}}>DEX CSV · Produktkatalog · Preisverzeichnis</div>
           </div>
         ):isMobile?(
-          <MobileCardGrid
-            cards={filtered}
-            manualPrices={manualPrices}
-            selected={selected}
-            onSelect={c=>setSelected(selected?.id===c.id?null:c)}
-            onSaved={loadManual}
-            userCode={userCode||'default'}
-            hidden={hidden}
-            onHide={hideCard}
-            onUnhide={unhideCard}
-          />
+          <>
+            {/* Mobile Filter Bar */}
+            <div style={{display:'flex',gap:8,marginBottom:10,overflowX:'auto',paddingBottom:4}}>
+              {[
+                {v:'all',l:'Alle'},
+                {v:'owned',l:'Im Besitz'},
+                {v:'collection',l:'Sammlung'},
+                {v:'wishlist',l:'Wishlist'},
+              ].map(({v,l})=>(
+                <button key={v} onClick={()=>setViewFilter(v)} style={{
+                  flexShrink:0,padding:'7px 14px',borderRadius:99,
+                  background:viewFilter===v?'#ff3d3d':'rgba(255,255,255,.06)',
+                  border:`1px solid ${viewFilter===v?'#ff3d3d':'rgba(255,255,255,.1)'}`,
+                  color:viewFilter===v?'#fff':'#8888aa',
+                  fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
+                  WebkitTapHighlightColor:'transparent',
+                }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <MobileCardGrid
+              cards={filtered}
+              manualPrices={manualPrices}
+              selected={selected}
+              onSelect={c=>setSelected(selected?.id===c.id?null:c)}
+              onSaved={loadManual}
+              userCode={userCode||'default'}
+              hidden={hidden}
+              onHide={hideCard}
+              onUnhide={unhideCard}
+            />
+          </>
         ):(
           <div style={{background:'#13131f',border:'1px solid rgba(255,255,255,.07)',borderRadius:12,overflow:'hidden'}}>
             <table style={{width:'100%',borderCollapse:'collapse'}}>
