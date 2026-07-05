@@ -172,6 +172,11 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
   if (id.startsWith('sv45-'))     id = id.replace('sv45-','sv4pt5-')
   if (id.startsWith('sm35-'))     id = id.replace('sm35-','sm3pt5-')
 
+  // Sets die noch nicht in pokemontcg.io verfügbar sind → sofort Platzhalter
+  // (verhindert dass TCGdex-Fallback falsche Rückseiten zeigt)
+  const notInApi = ['me4', 'me25', 'me3']
+  if (notInApi.some(s => id.startsWith(s+'-'))) return []
+
   const parts = id.split('-')
   const set = parts[0]
   const num = parts.slice(1).join('-')
@@ -475,6 +480,158 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
 }
 
 
+
+// ── Mobile Card Grid ──────────────────────────────────────────
+function MobileCardGrid({cards,manualPrices,selected,onSelect,onSaved,userCode,hidden,onHide,onUnhide}:{
+  cards:Card[]; manualPrices:ManualPrice[]; selected:Card|null
+  onSelect:(c:Card)=>void; onSaved:()=>void; userCode:string
+  hidden:Set<string>; onHide:(id:string)=>void; onUnhide:(id:string)=>void
+}) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+      {cards.map(card=>{
+        const live=card.price_live
+        const pTrend=live?.price_trend
+        const cardManual=manualPrices.filter(m=>m.card_id===card.id)
+        const latestM=cardManual[0]
+        const purchasePrice=cardManual.find(m=>m.purchase_price!=null)?.purchase_price??null
+        const purchasePct=(purchasePrice!=null&&latestM)?((latestM.price-purchasePrice)/purchasePrice)*100:null
+        const isSel=selected?.id===card.id
+        const isHidden=hidden.has(card.id)
+        const up=purchasePct!=null&&purchasePct>0.5
+        const dn=purchasePct!=null&&purchasePct<-0.5
+
+        return (
+          <div key={card.id}>
+            {/* Card Row */}
+            <div onClick={()=>onSelect(card)} style={{
+              background:'#13131f',border:`1px solid ${isSel?'rgba(78,158,255,.4)':'rgba(255,255,255,.07)'}`,
+              borderRadius:isSel?'12px 12px 0 0':12,padding:'12px 14px',
+              display:'flex',alignItems:'center',gap:12,
+              opacity:isHidden?.5:1,
+              WebkitTapHighlightColor:'transparent',cursor:'pointer',
+            }}>
+              {/* Image */}
+              <div style={{flexShrink:0}} onClick={e=>e.stopPropagation()}>
+                <CardThumb cardId={card.card_id} name={card.name}/>
+              </div>
+
+              {/* Info */}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:800,fontSize:14,color:'#f0f0f8',
+                  overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{card.name}</div>
+                <div style={{fontSize:11,color:'#55556a',marginTop:2,
+                  overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{card.set_name}</div>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginTop:4,flexWrap:'wrap'}}>
+                  <span className={`rb ${rarityClass(card.rarity)}`} style={{fontSize:9}}>{card.rarity}</span>
+                  <span style={{width:20,height:20,borderRadius:'50%',display:'inline-flex',
+                    alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:11,
+                    background:card.quantity>0?'rgba(41,224,134,.12)':'rgba(255,61,61,.1)',
+                    color:card.quantity>0?'#29e086':'#ff6666'}}>
+                    {card.quantity}
+                  </span>
+                </div>
+              </div>
+
+              {/* Prices */}
+              <div style={{textAlign:'right',flexShrink:0}}>
+                {pTrend!=null&&(
+                  <div style={{fontFamily:'monospace',fontWeight:700,fontSize:15,color:'#29e086'}}>{fmt(pTrend)}</div>
+                )}
+                {latestM&&(
+                  <div style={{fontFamily:'monospace',fontSize:11,color:'#b47bff',marginTop:2}}>{fmt(latestM.price)}</div>
+                )}
+                {purchasePct!=null&&(
+                  <div style={{fontFamily:'monospace',fontSize:11,fontWeight:700,marginTop:2,
+                    color:up?'#29e086':dn?'#ff6666':'#55556a'}}>
+                    {purchasePct>=0?'+':''}{purchasePct.toFixed(1)}%
+                  </div>
+                )}
+                <div style={{fontSize:10,color:isSel?'#4e9eff':'#55556a',marginTop:4}}>{isSel?'▲':'▼'}</div>
+              </div>
+            </div>
+
+            {/* Detail Bottom Sheet */}
+            {isSel&&(
+              <div style={{background:'rgba(78,158,255,.04)',border:'1px solid rgba(78,158,255,.2)',
+                borderTop:'none',borderRadius:'0 0 12px 12px',padding:16}}>
+
+                {/* CM Prices */}
+                {live&&(
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:14}}>
+                    {[
+                      {l:'Ab-Preis',v:live.price_low},
+                      {l:'Trend',v:live.price_trend},
+                      {l:'7-Tage Ø',v:live.avg7},
+                    ].map(({l,v})=>(
+                      <div key={l} style={{background:'#0d0d14',borderRadius:8,padding:'8px 10px',
+                        border:'1px solid rgba(255,255,255,.06)',textAlign:'center'}}>
+                        <div style={{fontSize:8,color:'#55556a',textTransform:'uppercase',letterSpacing:'1px',marginBottom:3}}>{l}</div>
+                        <div style={{fontFamily:'monospace',fontSize:13,fontWeight:600,color:v!=null?'#29e086':'#55556a'}}>{fmt(v)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Purchase price comparison */}
+                {purchasePrice!=null&&latestM&&(()=>{
+                  const pct=((latestM.price-purchasePrice)/purchasePrice)*100
+                  const u=pct>0.5,d=pct<-0.5
+                  return (
+                    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,
+                      background:'#0d0d14',borderRadius:8,padding:'10px 12px',
+                      border:'1px solid rgba(255,255,255,.06)'}}>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontSize:8,color:'#55556a',textTransform:'uppercase',letterSpacing:1}}>Kauf</div>
+                        <div style={{fontFamily:'monospace',fontWeight:700,fontSize:14,color:'#8888aa'}}>{fmt(purchasePrice)}</div>
+                      </div>
+                      <div style={{color:'#404055'}}>→</div>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontSize:8,color:'#55556a',textTransform:'uppercase',letterSpacing:1}}>Aktuell</div>
+                        <div style={{fontFamily:'monospace',fontWeight:700,fontSize:14,color:'#29e086'}}>{fmt(latestM.price)}</div>
+                      </div>
+                      <div style={{marginLeft:'auto',fontFamily:'monospace',fontSize:14,fontWeight:700,
+                        borderRadius:6,padding:'4px 10px',
+                        background:u?'rgba(41,224,134,.12)':d?'rgba(255,61,61,.1)':'rgba(255,255,255,.05)',
+                        color:u?'#29e086':d?'#ff6666':'#55556a'}}>
+                        {pct>=0?'+':''}{pct.toFixed(1)}%
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Manual Panel */}
+                <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:12,marginBottom:12}}>
+                  <ManualPanel cardId={card.id} existing={cardManual} onSaved={onSaved} userCode={userCode}/>
+                </div>
+
+                {/* Hide button */}
+                <div style={{paddingTop:8,borderTop:'1px solid rgba(255,255,255,.07)',display:'flex',gap:8}}>
+                  {isHidden?(
+                    <button onClick={e=>{e.stopPropagation();onUnhide(card.id)}} style={{
+                      flex:1,padding:'10px',background:'rgba(41,224,134,.08)',
+                      border:'1px solid rgba(41,224,134,.2)',borderRadius:8,
+                      color:'#29e086',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>
+                      👁 Einblenden
+                    </button>
+                  ):(
+                    <button onClick={e=>{e.stopPropagation();onHide(card.id)}} style={{
+                      flex:1,padding:'10px',background:'rgba(255,61,61,.08)',
+                      border:'1px solid rgba(255,61,61,.2)',borderRadius:8,
+                      color:'#ff6666',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>
+                      🚫 Ausblenden
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── User Code System ──────────────────────────────────────────
 function useUserCode() {
   const [code, setCode] = useState<string|null>(null)
@@ -547,6 +704,18 @@ function CodePrompt({ onSave, current }: { onSave: (c: string) => void; current?
   )
 }
 
+// ── Mobile Detection ─────────────────────────────────────────
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+  return isMobile
+}
+
 // ══════════════════════════════════════════════════════════════
 //  MAIN DASHBOARD
 // ══════════════════════════════════════════════════════════════
@@ -568,6 +737,7 @@ export default function Dashboard() {
   const [hidden,setHidden]         = useState<Set<string>>(new Set())
   const [showHidden,setShowHidden] = useState(false)
   const { code: userCode, showPrompt, saveCode, switchCode } = useUserCode()
+  const isMobile = useIsMobile()
 
   useEffect(()=>{
     if(rawCards.length&&cmProducts.length&&cmPrices.length)
@@ -684,9 +854,11 @@ export default function Dashboard() {
 
       {/* ── HEADER ── */}
       <header style={{position:'relative',zIndex:20,borderBottom:'1px solid rgba(255,61,61,.12)',
-        background:'linear-gradient(180deg,rgba(255,61,61,.1) 0%,transparent 100%)',padding:'0 40px'}}>
-        <div style={{maxWidth:1500,margin:'0 auto',display:'flex',alignItems:'center',gap:24,padding:'18px 0'}}>
-          <svg width="52" height="52" viewBox="0 0 100 100" style={{filter:'drop-shadow(0 0 12px rgba(255,61,61,.5))',flexShrink:0}}>
+        background:'linear-gradient(180deg,rgba(255,61,61,.1) 0%,transparent 100%)',
+        padding:isMobile?'0 16px':'0 40px'}}>
+        <div style={{maxWidth:1500,margin:'0 auto',display:'flex',alignItems:'center',
+          gap:isMobile?12:24,padding:isMobile?'12px 0':'18px 0',flexWrap:isMobile?'wrap':'nowrap'}}> 
+          <svg width={isMobile?38:52} height={isMobile?38:52} viewBox="0 0 100 100" style={{filter:'drop-shadow(0 0 12px rgba(255,61,61,.5))',flexShrink:0}}>
             <circle cx="50" cy="50" r="47" fill="#1a1a2a" stroke="rgba(255,255,255,.08)" strokeWidth="2"/>
             <path d="M3 50 Q3 3 50 3 Q97 3 97 50Z" fill="#ff3d3d"/>
             <rect x="3" y="46" width="94" height="8" fill="#0d0d14"/>
@@ -699,17 +871,21 @@ export default function Dashboard() {
               Cardmarket Official Data{pricesDate?` · Stand: ${pricesDate}`:''} · Globaler Marktpreis
             </div>
           </div>
-          <div style={{marginLeft:'auto',display:'flex',gap:12}}>
-            {[
+          <div style={{marginLeft:'auto',display:'flex',gap:isMobile?6:12,flexWrap:'wrap',justifyContent:'flex-end'}}>
+            {(isMobile?[
+              {val:cards.length,lbl:'Karten'},
+              {val:owned.length,lbl:'Besitz'},
+              {val:manualVal>0?fmt(manualVal):'–',lbl:'Wert'},
+            ]:[
               {val:cards.length,lbl:'Karten'},
               {val:owned.length,lbl:'Im Besitz'},
               {val:manualVal>0?fmt(manualVal):'–',lbl:'Manueller Wert'},
               {val:dexVal>0?fmt(dexVal):'–',lbl:'DEX-Wert'},
-            ].map(({val,lbl})=>(
+            ]).map(({val,lbl})=>(
               <div key={lbl} style={{background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.08)',
-                borderRadius:99,padding:'8px 18px',textAlign:'center'}}>
-                <div style={{fontFamily:'monospace',fontSize:17,fontWeight:900,color:'#ffd426',lineHeight:1}}>{val}</div>
-                <div style={{fontSize:9,color:'rgba(255,255,255,.3)',textTransform:'uppercase',letterSpacing:1,marginTop:3}}>{lbl}</div>
+                borderRadius:99,padding:isMobile?'6px 10px':'8px 18px',textAlign:'center'}}>
+                <div style={{fontFamily:'monospace',fontSize:isMobile?13:17,fontWeight:900,color:'#ffd426',lineHeight:1}}>{val}</div>
+                <div style={{fontSize:isMobile?8:9,color:'rgba(255,255,255,.3)',textTransform:'uppercase',letterSpacing:1,marginTop:3}}>{lbl}</div>
               </div>
             ))}
           </div>
@@ -726,7 +902,7 @@ export default function Dashboard() {
       </header>
 
       {/* ── INFO BANNER ── */}
-      <div style={{position:'relative',zIndex:10,maxWidth:1500,margin:'16px auto 0',padding:'0 40px'}}>
+      <div style={{position:'relative',zIndex:10,maxWidth:1500,margin:isMobile?'8px auto 0':'16px auto 0',padding:isMobile?'0 12px':'0 40px'}}>
         <div style={{background:'rgba(255,212,38,.06)',border:'1px solid rgba(255,212,38,.2)',
           borderRadius:10,padding:'10px 18px',fontSize:12,color:'rgba(255,212,38,.8)',
           display:'flex',alignItems:'center',gap:8}}>
@@ -735,9 +911,9 @@ export default function Dashboard() {
       </div>
 
       {/* ── CONTROLS ── */}
-      <div style={{position:'relative',zIndex:10,maxWidth:1500,margin:'12px auto 0',padding:'0 40px'}}>
-        <div style={{background:'#13131f',border:'1px solid rgba(255,255,255,.07)',borderRadius:12,padding:'18px 22px'}}>
-          <div style={{display:'flex',flexWrap:'wrap',gap:12,alignItems:'flex-end'}}>
+      <div style={{position:'relative',zIndex:10,maxWidth:1500,margin:isMobile?'8px auto 0':'12px auto 0',padding:isMobile?'0 12px':'0 40px'}}>
+        <div style={{background:'#13131f',border:'1px solid rgba(255,255,255,.07)',borderRadius:12,padding:isMobile?'12px 14px':'18px 22px'}}>
+          <div style={{display:'flex',flexWrap:'wrap',gap:isMobile?8:12,alignItems:'flex-end'}}>
             <FileBtn label="1. DEX CSV" loaded={rawCards.length>0} onFile={handleCSV} accept=".csv"/>
             <FileBtn label="2. Produktkatalog" loaded={cmProducts.length>0} onFile={handleProducts}/>
             <FileBtn label="3. Preisverzeichnis" loaded={cmPrices.length>0} onFile={handlePrices}/>
@@ -775,10 +951,10 @@ export default function Dashboard() {
       </div>
 
       {/* ── CONTENT ── */}
-      <div style={{position:'relative',zIndex:10,maxWidth:1500,margin:'20px auto 60px',padding:'0 40px'}}>
+      <div style={{position:'relative',zIndex:10,maxWidth:1500,margin:isMobile?'12px auto 80px':'20px auto 60px',padding:isMobile?'0 12px':'0 40px'}}>
 
         {/* Summary */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:isMobile?8:12,marginBottom:isMobile?12:20}}>
           {[
             {val:filtered.length,lbl:'Einträge gefiltert',acc:'#4e9eff'},
             {val:owned.length,lbl:'Im Besitz',acc:'#29e086'},
@@ -796,7 +972,7 @@ export default function Dashboard() {
 
         {/* Filter Bar */}
         <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center',marginBottom:14}}>
-          <div style={{position:'relative',flex:1,minWidth:220}}>
+          <div style={{position:'relative',flex:1,minWidth:isMobile?120:220}}>
             <Search size={14} style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'#55556a'}}/>
             <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
               placeholder="Name, Set, Variante, ID …"
@@ -817,6 +993,18 @@ export default function Dashboard() {
             <div style={{fontSize:18,fontWeight:700,color:'#8888aa',marginBottom:8}}>Lade die 3 Dateien um loszulegen</div>
             <div style={{fontSize:13,color:'#55556a'}}>DEX CSV · Produktkatalog · Preisverzeichnis</div>
           </div>
+        ):isMobile?(
+          <MobileCardGrid
+            cards={filtered}
+            manualPrices={manualPrices}
+            selected={selected}
+            onSelect={c=>setSelected(selected?.id===c.id?null:c)}
+            onSaved={loadManual}
+            userCode={userCode||'default'}
+            hidden={hidden}
+            onHide={hideCard}
+            onUnhide={unhideCard}
+          />
         ):(
           <div style={{background:'#13131f',border:'1px solid rgba(255,255,255,.07)',borderRadius:12,overflow:'hidden'}}>
             <table style={{width:'100%',borderCollapse:'collapse'}}>
@@ -1021,6 +1209,11 @@ export default function Dashboard() {
         ::-webkit-scrollbar{width:5px;height:5px}
         ::-webkit-scrollbar-track{background:#0d0d14}
         ::-webkit-scrollbar-thumb{background:#212135;border-radius:99px}
+        * { -webkit-tap-highlight-color: transparent; }
+        input,select,button { font-size: 16px; }
+        @media (max-width: 767px) {
+          input,select { font-size: 16px !important; }
+        }
         .rb{font-size:10px;font-weight:700;border-radius:99px;padding:2px 9px;display:inline-block;white-space:nowrap;letter-spacing:.4px}
         .rb-c{background:rgba(100,100,120,.18);color:#777;border:1px solid rgba(100,100,120,.3)}
         .rb-u{background:rgba(78,158,255,.12);color:#4e9eff;border:1px solid rgba(78,158,255,.25)}
