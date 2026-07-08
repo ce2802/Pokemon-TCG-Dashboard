@@ -18,6 +18,7 @@ type ManualPrice = {
   language: string; condition: string; price: number; note: string
   is_holo: boolean; is_reverse_holo: boolean
   purchase_price?: number | null
+  cm_link?: string | null
 }
 type Card = {
   id: string; card_id: string; name: string; set_name: string
@@ -481,6 +482,105 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
 
 
 
+
+// ── CM Link Panel ─────────────────────────────────────────────
+function CmLinkPanel({cardId, existing, userCode, onSaved}: {
+  cardId: string; existing: ManualPrice[]; userCode: string; onSaved: ()=>void
+}) {
+  const savedLink = existing.find(e => e.cm_link)?.cm_link || null
+  const [editing, setEditing] = useState(false)
+  const [input, setInput] = useState(savedLink || '')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!input.trim()) return
+    setSaving(true)
+    try {
+      const {createClient} = await import('@supabase/supabase-js')
+      const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+      if (savedLink) {
+        // Update existing entry that has a cm_link
+        const entry = existing.find(e => e.cm_link)
+        if (entry?.id) await db.from('manual_prices').update({cm_link: input.trim()}).eq('id', entry.id)
+      } else if (existing.length > 0) {
+        // Add cm_link to the latest entry
+        await db.from('manual_prices').update({cm_link: input.trim()}).eq('id', existing[0].id!)
+      } else {
+        // No entries yet — save as standalone entry with just the link
+        await db.from('manual_prices').insert({
+          card_id: cardId, entered_at: new Date().toISOString().split('T')[0],
+          language: 'D', condition: 'NM', price: 0, note: '', cm_link: input.trim(),
+          user_code: userCode
+        })
+      }
+      setEditing(false)
+      onSaved()
+    } catch(e:any) { alert('Fehler: ' + e.message) }
+    finally { setSaving(false) }
+  }
+
+  async function remove() {
+    const entry = existing.find(e => e.cm_link)
+    if (!entry?.id) return
+    const {createClient} = await import('@supabase/supabase-js')
+    const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+    await db.from('manual_prices').update({cm_link: null}).eq('id', entry.id)
+    setInput('')
+    onSaved()
+  }
+
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+      <span style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'1px',color:'#55556a',flexShrink:0}}>
+        CM Link
+      </span>
+      {savedLink && !editing ? (
+        <>
+          <a href={savedLink} target="_blank" rel="noopener" style={{
+            display:'inline-flex',alignItems:'center',gap:5,padding:'5px 12px',
+            background:'rgba(78,158,255,.12)',border:'1px solid rgba(78,158,255,.25)',
+            borderRadius:7,color:'#4e9eff',fontSize:12,fontWeight:600,textDecoration:'none',
+            flexShrink:0
+          }}>
+            <ExternalLink size={11}/> Cardmarket öffnen
+          </a>
+          <button onClick={()=>{setInput(savedLink);setEditing(true)}} style={{
+            background:'none',border:'1px solid rgba(255,255,255,.1)',borderRadius:7,
+            color:'#55556a',fontSize:11,padding:'5px 10px',cursor:'pointer',fontFamily:'inherit'
+          }}>✏️</button>
+          <button onClick={remove} style={{
+            background:'none',border:'1px solid rgba(255,61,61,.2)',borderRadius:7,
+            color:'#ff6666',fontSize:11,padding:'5px 10px',cursor:'pointer',fontFamily:'inherit'
+          }}>✕</button>
+        </>
+      ) : editing || !savedLink ? (
+        <>
+          <input
+            type="text" value={input}
+            onChange={e=>setInput(e.target.value)}
+            placeholder="https://www.cardmarket.com/..."
+            style={{flex:1,minWidth:200,background:'#0d0d14',border:'1px solid rgba(255,255,255,.15)',
+              borderRadius:7,color:'#f0f0f8',padding:'6px 10px',fontSize:12,fontFamily:'inherit',outline:'none'}}
+          />
+          <button onClick={save} disabled={saving||!input.trim()} style={{
+            display:'inline-flex',alignItems:'center',gap:5,padding:'6px 12px',
+            background:'linear-gradient(135deg,#ff3d3d,#cc2200)',color:'#fff',
+            border:'none',borderRadius:7,fontSize:12,fontWeight:600,
+            cursor:saving||!input.trim()?'not-allowed':'pointer',
+            opacity:saving||!input.trim()?.5:1,fontFamily:'inherit',flexShrink:0
+          }}>
+            <Save size={11}/>{saving?'…':'Speichern'}
+          </button>
+          {editing&&<button onClick={()=>setEditing(false)} style={{
+            background:'none',border:'1px solid rgba(255,255,255,.1)',borderRadius:7,
+            color:'#55556a',fontSize:11,padding:'6px 10px',cursor:'pointer',fontFamily:'inherit'
+          }}>Abbrechen</button>}
+        </>
+      ) : null}
+    </div>
+  )
+}
+
 // ── Mobile Card Grid ──────────────────────────────────────────
 function MobileCardGrid({cards,manualPrices,selected,onSelect,onSaved,userCode,hidden,onHide,onUnhide}:{
   cards:Card[]; manualPrices:ManualPrice[]; selected:Card|null
@@ -603,6 +703,11 @@ function MobileCardGrid({cards,manualPrices,selected,onSelect,onSaved,userCode,h
                 {/* Manual Panel */}
                 <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:12,marginBottom:12}}>
                   <ManualPanel cardId={card.id} existing={cardManual} onSaved={onSaved} userCode={userCode}/>
+                </div>
+
+                {/* CM Link */}
+                <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:10,marginBottom:10}}>
+                  <CmLinkPanel cardId={card.id} existing={cardManual} userCode={userCode} onSaved={onSaved}/>
                 </div>
 
                 {/* Hide button */}
@@ -1138,6 +1243,7 @@ export default function Dashboard() {
                                 {fmt(latestM.price)} {latestM.language}/{latestM.condition}
                               </span>
                             )}
+                            {(()=>{const cl=cardManual.find(m=>m.cm_link)?.cm_link;return cl&&!isSel?<a href={cl} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{color:'#4e9eff',fontSize:11,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:2,opacity:.8}}>CM<ExternalLink size={9}/></a>:null})()}
                             <span style={{fontSize:10,color:isSel?'#4e9eff':'#55556a'}}>
                               {isSel?'▲ Einklappen':'▼ Details'}
                             </span>
@@ -1178,6 +1284,11 @@ export default function Dashboard() {
                                 {/* Manual prices */}
                                 <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:16,marginBottom:12}}>
                                   <ManualPanel cardId={card.id} existing={cardManual} onSaved={loadManual} userCode={userCode||'default'}/>
+                                </div>
+
+                                {/* CM Link */}
+                                <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:12,marginBottom:12}}>
+                                  <CmLinkPanel cardId={card.id} existing={cardManual} userCode={userCode||'default'} onSaved={loadManual}/>
                                 </div>
 
                                 {/* Hide/Unhide button */}
