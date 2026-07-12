@@ -185,14 +185,12 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
   const setUpper = set.toUpperCase()
 
   const urls = [
-    // Scrydex CDN (neue offizielle Quelle von pokemontcg.io, hat me2pt5, me3 etc.)
-    `https://images.scrydex.com/pokemon/${set}-${num}/high`,
-    `https://images.scrydex.com/pokemon/${set}-${num}/small`,
-    // Pokemon TCG API CDN (ältere Quelle, gut für Standard-Sets)
+    // Offizielle Pokemon.com — zuverlässigste Quelle, korrekte Vorderseiten für alle Sets
+    `https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/${setUpper}/${setUpper}_EN_${num}.png`,
+    // Pokemon TCG API CDN als Fallback
     `https://images.pokemontcg.io/${set}/${num}_hires.png`,
     `https://images.pokemontcg.io/${set}/${num}.png`,
-    // Offizielle Pokemon.com Bilder als letzter Fallback
-    `https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/${setUpper}/${setUpper}_EN_${num}.png`,
+    // Scrydex ABSICHTLICH ENTFERNT — liefert für me2pt5/me3/me4 Kartenrückseiten statt Vorderseiten
   ]
   return urls
 }
