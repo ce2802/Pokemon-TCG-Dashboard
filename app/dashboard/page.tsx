@@ -173,9 +173,11 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
   if (id.startsWith('sv45-'))     id = id.replace('sv45-','sv4pt5-')
   if (id.startsWith('sm35-'))     id = id.replace('sm35-','sm3pt5-')
 
-  // ID-Mapping für Scrydex: me25 → me2pt5, me3 → me3 (schon korrekt), me4 → me4
-  // Scrydex hat alle diese Sets, daher keine Ausschlüsse mehr nötig
+  // ID-Mapping für pokemon.com Set-Codes
+  // Dex-App → pokemon.com Format
   if (id.startsWith('me25-')) id = id.replace('me25-', 'me2pt5-')
+  if (id.startsWith('me3-'))  id = id.replace('me3-',  'me03-')
+  if (id.startsWith('me4-'))  id = id.replace('me4-',  'me04-')
 
   const parts = id.split('-')
   const set = parts[0]
