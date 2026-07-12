@@ -173,10 +173,9 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
   if (id.startsWith('sv45-'))     id = id.replace('sv45-','sv4pt5-')
   if (id.startsWith('sm35-'))     id = id.replace('sm35-','sm3pt5-')
 
-  // Sets die noch nicht in pokemontcg.io verfügbar sind → sofort Platzhalter
-  // (verhindert dass TCGdex-Fallback falsche Rückseiten zeigt)
-  const notInApi = ['me4', 'me25', 'me3']
-  if (notInApi.some(s => id.startsWith(s+'-'))) return []
+  // ID-Mapping für Scrydex: me25 → me2pt5, me3 → me3 (schon korrekt), me4 → me4
+  // Scrydex hat alle diese Sets, daher keine Ausschlüsse mehr nötig
+  if (id.startsWith('me25-')) id = id.replace('me25-', 'me2pt5-')
 
   const parts = id.split('-')
   const set = parts[0]
@@ -186,15 +185,15 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
   const setUpper = set.toUpperCase()
 
   const urls = [
-    // Pokemon TCG API (zuverlässigste Quelle, korrekte Bilder)
+    // Scrydex CDN (neue offizielle Quelle von pokemontcg.io, hat me2pt5, me3 etc.)
+    `https://images.scrydex.com/pokemon/${set}-${num}/high`,
+    `https://images.scrydex.com/pokemon/${set}-${num}/small`,
+    // Pokemon TCG API CDN (ältere Quelle, gut für Standard-Sets)
     `https://images.pokemontcg.io/${set}/${num}_hires.png`,
     `https://images.pokemontcg.io/${set}/${num}.png`,
-    // Offizielle Pokemon.com Bilder als Fallback
+    // Offizielle Pokemon.com Bilder als letzter Fallback
     `https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/${setUpper}/${setUpper}_EN_${num}.png`,
   ]
-  // TCGdex absichtlich entfernt — hat bekannten Datenfehler:
-  // manche Karten (besonders JP-nahe Sets wie me4, me25, me3) zeigen
-  // Kartenrückseite statt Vorderseite ('japanese-back' Bug)
   return urls
 }
 
