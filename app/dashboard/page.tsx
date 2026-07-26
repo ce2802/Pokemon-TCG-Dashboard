@@ -178,6 +178,7 @@ function cardIdToPokemonTcgUrl(cardId: string): string[] {
   if (id.startsWith('me25-')) id = id.replace('me25-', 'me2pt5-')
   if (id.startsWith('me3-'))  id = id.replace('me3-',  'me03-')
   if (id.startsWith('me4-'))  id = id.replace('me4-',  'me04-')
+  if (id.startsWith('me05-') || id.startsWith('me5-')) id = id.replace(/^me0?5-/, 'me05-')
 
   const parts = id.split('-')
   const set = parts[0]
