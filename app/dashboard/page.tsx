@@ -366,8 +366,6 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
   const [price,setPrice]=useState('')
   const [date,setDate]=useState(new Date().toISOString().split('T')[0])
   const [note,setNote]=useState('')
-  const [isHolo,setIsHolo]=useState(false)
-  const [isReverseHolo,setIsReverseHolo]=useState(false)
   const [purchasePrice,setPurchasePrice]=useState('')
   const [salePrice,setSalePrice]=useState('')
   const [saving,setSaving]=useState(false)
@@ -390,7 +388,7 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
       const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
       const pp = existingPurchasePrice != null ? existingPurchasePrice : (purchasePrice ? parseFloat(purchasePrice.replace(',','.')) : null)
       const sp = salePrice ? parseFloat(salePrice.replace(',','.')) : null
-      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note,is_holo:isHolo,is_reverse_holo:isReverseHolo,user_code:userCode,purchase_price:pp,sale_price:sp})
+      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note,user_code:userCode,purchase_price:pp,sale_price:sp})
       if(error) throw error
       setPrice('');setNote('');onSaved()
     }catch(e:any){alert('Fehler: '+e.message)}
@@ -466,8 +464,6 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
           {l:'Preis (€)',el:<input type="text" value={price} onChange={e=>setPrice(e.target.value)} placeholder="3,50" style={{...inp,width:90}}/>},
           {l:'Notiz',el:<input type="text" value={note} onChange={e=>setNote(e.target.value)} placeholder="optional" style={{...inp,width:160}}/>},
           ...(existingPurchasePrice == null ? [{l:'Kaufpreis (€)',el:<input type="text" value={purchasePrice} onChange={(e:any)=>setPurchasePrice(e.target.value)} placeholder="z.B. 2,00" style={{...inp,width:100}}/>}] : []),
-          {l:'Holo',el:<select value={isHolo?'ja':'nein'} onChange={e=>setIsHolo(e.target.value==='ja')} style={{...sel,width:90}}><option value="nein">Nein</option><option value="ja">Ja</option></select>},
-          {l:'Reverse Holo',el:<select value={isReverseHolo?'ja':'nein'} onChange={e=>setIsReverseHolo(e.target.value==='ja')} style={{...sel,width:90}}><option value="nein">Nein</option><option value="ja">Ja</option></select>},
           {l:'Verkaufspreis (€)',el:<input type="text" value={salePrice} onChange={(e:any)=>setSalePrice(e.target.value)} placeholder="optional" style={{...inp,width:100}}/>},
         ].map(({l,el})=>(
           <div key={l} style={{display:'flex',flexDirection:'column',gap:4}}>
