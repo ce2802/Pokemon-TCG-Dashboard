@@ -26,7 +26,7 @@ type Card = {
   category: string; dex_price: number|null; image_url: string|null
   cm_url: string|null; price_live: PriceLive|null
 }
-type SortKey = 'name'|'set_name'|'rarity'|'quantity'|'dex_price'|'price_trend'|'diff'|'manualDiff'|'purchasePrice'|'purchasePct'
+type SortKey = 'name'|'set_name'|'rarity'|'quantity'|'dex_price'|'price_trend'|'diff'|'manualDiff'|'purchasePrice'|'purchasePct'|'manualPrice'
 type SortDir = 'asc'|'desc'
 type CMProduct = { idProduct: number; name: string; idExpansion: number }
 type CMPrice = {
@@ -594,6 +594,8 @@ function MobileCardGrid({cards,manualPrices,selected,onSelect,onSaved,userCode,h
         const pTrend=live?.price_trend
         const cardManual=manualPrices.filter(m=>m.card_id===card.id)
         const latestM=cardManual[0]
+        const prevM=cardManual[1]
+        const manualDiff=latestM&&prevM?((latestM.price-prevM.price)/prevM.price)*100:null
         const purchasePrice=cardManual.find(m=>m.purchase_price!=null)?.purchase_price??null
         const purchasePct=(purchasePrice!=null&&latestM)?((latestM.price-purchasePrice)/purchasePrice)*100:null
         const isSel=selected?.id===card.id
@@ -644,7 +646,13 @@ function MobileCardGrid({cards,manualPrices,selected,onSelect,onSaved,userCode,h
                 {purchasePct!=null&&(
                   <div style={{fontFamily:'monospace',fontSize:11,fontWeight:700,marginTop:2,
                     color:up?'#29e086':dn?'#ff6666':'#55556a'}}>
-                    {purchasePct>=0?'+':''}{purchasePct.toFixed(1)}%
+                    Kauf: {purchasePct>=0?'+':''}{purchasePct.toFixed(1)}%
+                  </div>
+                )}
+                {manualDiff!=null&&(
+                  <div style={{fontFamily:'monospace',fontSize:11,fontWeight:700,marginTop:2,
+                    color:manualDiff>0.5?'#29e086':manualDiff<-0.5?'#ff6666':'#55556a'}}>
+                    Δ {manualDiff>=0?'+':''}{manualDiff.toFixed(1)}%
                   </div>
                 )}
                 <div style={{fontSize:10,color:isSel?'#4e9eff':'#55556a',marginTop:4}}>{isSel?'▲':'▼'}</div>
@@ -656,22 +664,7 @@ function MobileCardGrid({cards,manualPrices,selected,onSelect,onSaved,userCode,h
               <div style={{background:'rgba(78,158,255,.04)',border:'1px solid rgba(78,158,255,.2)',
                 borderTop:'none',borderRadius:'0 0 12px 12px',padding:16}}>
 
-                {/* CM Prices */}
-                {live&&(
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:14}}>
-                    {[
-                      {l:'Ab-Preis',v:live.price_low},
-                      {l:'Trend',v:live.price_trend},
-                      {l:'7-Tage Ø',v:live.avg7},
-                    ].map(({l,v})=>(
-                      <div key={l} style={{background:'#0d0d14',borderRadius:8,padding:'8px 10px',
-                        border:'1px solid rgba(255,255,255,.06)',textAlign:'center'}}>
-                        <div style={{fontSize:8,color:'#55556a',textTransform:'uppercase',letterSpacing:'1px',marginBottom:3}}>{l}</div>
-                        <div style={{fontFamily:'monospace',fontSize:13,fontWeight:600,color:v!=null?'#29e086':'#55556a'}}>{fmt(v)}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+
 
                 {/* Purchase price comparison */}
                 {purchasePrice!=null&&latestM&&(()=>{
@@ -909,8 +902,16 @@ export default function Dashboard() {
       bv=b.price_live?.price_trend!=null&&b.dex_price!=null?b.price_live.price_trend-b.dex_price:null
     }
     else if(sortKey==='manualDiff'){
-      const dm=(c:Card)=>{const all=manualPrices.filter(m=>m.card_id===c.id);return all.length>=2?all[0].price-all[1].price:null}
+      const dm=(c:Card)=>{
+        const all=manualPrices.filter(m=>m.card_id===c.id)
+        if(all.length<2) return null
+        return ((all[0].price-all[1].price)/all[1].price)*100
+      }
       av=dm(a);bv=dm(b)
+    }
+    else if(sortKey==='manualPrice'){
+      av=manualPrices.find(m=>m.card_id===a.id)?.price??null
+      bv=manualPrices.find(m=>m.card_id===b.id)?.price??null
     }
     else if(sortKey==='purchasePrice'){
       const pp=(c:Card)=>manualPrices.filter(m=>m.card_id===c.id).find(m=>m.purchase_price!=null)?.purchase_price??null
@@ -1141,8 +1142,8 @@ export default function Dashboard() {
                   {([
                     {k:'name',l:'Karte'},{k:'set_name',l:'Set'},
                     {k:'rarity',l:'Seltenheit'},{k:'quantity',l:'Qty'},
-                    {k:'price_trend',l:'CM Trend'},
-                    {k:'purchasePrice',l:'Kaufpreis'},{k:'purchasePct',l:'Entwicklung'},
+                    {k:'purchasePrice',l:'Kaufpreis'},{k:'manualPrice',l:'Letzter Preis'},
+                    {k:'purchasePct',l:'Kauf-Entw. %'},{k:'manualDiff',l:'Preis-Entw. %'},
                   ] as {k:SortKey;l:string}[]).map(({k,l})=>(
                     <th key={k} onClick={()=>toggleSort(k)} style={{padding:'10px 14px',textAlign:'left',
                       fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'1.5px',
@@ -1161,7 +1162,7 @@ export default function Dashboard() {
                   const diff=pTrend!=null&&card.dex_price!=null?pTrend-card.dex_price:null
                   const cardManual=manualPrices.filter(m=>m.card_id===card.id)
                   const latestM=cardManual[0], prevM=cardManual[1]
-                  const manualDiff=latestM&&prevM?latestM.price-prevM.price:null
+                  const manualDiff=latestM&&prevM?((latestM.price-prevM.price)/prevM.price)*100:null
                   const purchasePrice=cardManual.find(m=>m.purchase_price!=null)?.purchase_price??null
                   const purchasePct=(purchasePrice!=null&&latestM)?((latestM.price-purchasePrice)/purchasePrice)*100:null
                   const isSel=selected?.id===card.id
@@ -1223,15 +1224,23 @@ export default function Dashboard() {
                             background:card.quantity>0?'rgba(41,224,134,.12)':'rgba(255,61,61,.1)',
                             color:card.quantity>0?'#29e086':'#ff6666'}}>{card.quantity}</span>
                         </td>
-                        <td style={{padding:'10px 14px'}}>
-                          {pTrend!=null?<span style={{fontFamily:'monospace',fontWeight:700,fontSize:14,color:'#29e086'}}>{fmt(pTrend)}</span>:<span style={{color:'#404055'}}>–</span>}
-                        </td>
                         <td style={{padding:'10px 14px',fontFamily:'monospace',fontSize:12,color:'#8888aa'}}>
                           {purchasePrice!=null?fmt(purchasePrice):<span style={{color:'#404055'}}>–</span>}
                         </td>
                         <td style={{padding:'10px 14px'}}>
+                          {latestM
+                            ?<span style={{fontFamily:'monospace',fontWeight:700,fontSize:13,color:'#b47bff'}}>{fmt(latestM.price)}</span>
+                            :<span style={{color:'#404055'}}>–</span>}
+                        </td>
+                        <td style={{padding:'10px 14px'}}>
                           {purchasePct!=null
                             ?<DiffBadgePct v={purchasePct}/>
+                            :<span style={{color:'#404055'}}>–</span>}
+                        </td>
+                        <td style={{padding:'10px 14px'}}>
+                          {manualDiff!=null
+                            ?<DiffBadgePct v={manualDiff}/>
+                            :latestM?<span style={{fontSize:10,color:'#55556a'}}>1. Eintrag</span>
                             :<span style={{color:'#404055'}}>–</span>}
                         </td>
                         <td style={{padding:'10px 14px'}}>
@@ -1254,32 +1263,14 @@ export default function Dashboard() {
                       {/* Detail Panel */}
                       {isSel&&(
                         <tr key={`${card.id}-d`} style={{background:'rgba(78,158,255,.04)',borderBottom:'1px solid rgba(255,255,255,.03)'}}>
-                          <td colSpan={9} style={{padding:'20px 20px 20px 74px'}}>
+                          <td colSpan={10} style={{padding:'20px 20px 20px 74px'}}>
                             <div style={{display:'flex',gap:24,alignItems:'flex-start'}}>
                               <CardImageLarge cardId={card.card_id} name={card.name}/>
                               <div style={{flex:1}}>
                                 <div style={{fontSize:17,fontWeight:800,marginBottom:2}}>{card.name}</div>
                                 <div style={{fontSize:12,color:'#8888aa',marginBottom:16}}>{card.set_name} · {card.variant} · {card.rarity}</div>
 
-                                {/* CM Prices */}
-                                {live&&(
-                                  <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginBottom:20}}>
-                                    {[
-                                      {l:'Ab-Preis',v:live.price_low},
-                                      {l:'Trend',v:live.price_trend},
-                                      {l:'Aktueller Ø',v:live.price_avg},
-                                      {l:'7-Tage Ø',v:live.avg7},
-                                      {l:'30-Tage Ø',v:live.avg30},
-                                    ].map(({l,v})=>(
-                                      <div key={l} style={{background:'#0d0d14',borderRadius:8,
-                                        padding:'10px 12px',border:'1px solid rgba(255,255,255,.06)'}}>
-                                        <div style={{fontSize:9,color:'#55556a',textTransform:'uppercase',letterSpacing:'1px',marginBottom:4}}>{l}</div>
-                                        <div style={{fontFamily:'monospace',fontSize:15,fontWeight:600,
-                                          color:v!=null?'#29e086':'#55556a'}}>{fmt(v)}</div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
+
 
                                 {/* Manual prices */}
                                 <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:16,marginBottom:12}}>
