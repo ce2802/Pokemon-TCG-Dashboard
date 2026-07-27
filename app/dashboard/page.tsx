@@ -19,6 +19,7 @@ type ManualPrice = {
   is_holo: boolean; is_reverse_holo: boolean
   purchase_price?: number | null
   cm_link?: string | null
+  sale_price?: number | null
 }
 type Card = {
   id: string; card_id: string; name: string; set_name: string
@@ -365,6 +366,7 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
   const [isHolo,setIsHolo]=useState(false)
   const [isReverseHolo,setIsReverseHolo]=useState(false)
   const [purchasePrice,setPurchasePrice]=useState('')
+  const [salePrice,setSalePrice]=useState('')
   const [saving,setSaving]=useState(false)
 
   // Kaufpreis: einmalig pro Karte - wenn schon einer existiert, vorausfüllen & sperren
@@ -384,7 +386,8 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
       const {createClient}=await import('@supabase/supabase-js')
       const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
       const pp = existingPurchasePrice != null ? existingPurchasePrice : (purchasePrice ? parseFloat(purchasePrice.replace(',','.')) : null)
-      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note,is_holo:isHolo,is_reverse_holo:isReverseHolo,user_code:userCode,purchase_price:pp})
+      const sp = salePrice ? parseFloat(salePrice.replace(',','.')) : null
+      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note,is_holo:isHolo,is_reverse_holo:isReverseHolo,user_code:userCode,purchase_price:pp,sale_price:sp})
       if(error) throw error
       setPrice('');setNote('');onSaved()
     }catch(e:any){alert('Fehler: '+e.message)}
@@ -440,6 +443,7 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
                 {e.is_holo&&<span style={{fontSize:11,background:'rgba(255,212,38,.2)',color:'#ffe566',borderRadius:4,padding:'1px 7px'}}>Holo</span>}
                 {e.is_reverse_holo&&<span style={{fontSize:11,background:'rgba(180,123,255,.15)',color:'#b47bff',borderRadius:4,padding:'1px 7px'}}>Rev.Holo</span>}
                 <span style={{fontFamily:'monospace',fontWeight:600,fontSize:13,color:'#29e086',flex:1}}>{fmt(e.price)}</span>
+                {e.sale_price!=null&&<span style={{fontSize:11,background:'rgba(255,212,38,.1)',color:'#ffd426',borderRadius:4,padding:'1px 7px',border:'1px solid rgba(255,212,38,.2)'}}>Verkauf: {fmt(e.sale_price)}</span>}
                 {e.note&&<span style={{fontSize:11,color:'#55556a'}}>{e.note}</span>}
                 <button onClick={()=>e.id&&del(e.id)}
                   style={{background:'none',border:'none',cursor:'pointer',color:'#55556a',display:'flex',padding:2}}>
@@ -461,6 +465,7 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
           ...(existingPurchasePrice == null ? [{l:'Kaufpreis (€)',el:<input type="text" value={purchasePrice} onChange={(e:any)=>setPurchasePrice(e.target.value)} placeholder="z.B. 2,00" style={{...inp,width:100}}/>}] : []),
           {l:'Holo',el:<select value={isHolo?'ja':'nein'} onChange={e=>setIsHolo(e.target.value==='ja')} style={{...sel,width:90}}><option value="nein">Nein</option><option value="ja">Ja</option></select>},
           {l:'Reverse Holo',el:<select value={isReverseHolo?'ja':'nein'} onChange={e=>setIsReverseHolo(e.target.value==='ja')} style={{...sel,width:90}}><option value="nein">Nein</option><option value="ja">Ja</option></select>},
+          {l:'Verkaufspreis (€)',el:<input type="text" value={salePrice} onChange={(e:any)=>setSalePrice(e.target.value)} placeholder="optional" style={{...inp,width:100}}/>},
         ].map(({l,el})=>(
           <div key={l} style={{display:'flex',flexDirection:'column',gap:4}}>
             <label style={{fontSize:10,color:'#55556a'}}>{l}</label>
