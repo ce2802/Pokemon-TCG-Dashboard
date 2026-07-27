@@ -20,6 +20,9 @@ type ManualPrice = {
   purchase_price?: number | null
   cm_link?: string | null
   sale_price?: number | null
+  card_language?: string | null
+  card_is_holo?: boolean | null
+  card_is_reverse_holo?: boolean | null
 }
 type Card = {
   id: string; card_id: string; name: string; set_name: string
@@ -488,6 +491,108 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
 
 
 
+
+// ── Card Meta Panel (Sprache, Holo, Rev-Holo merken) ─────────
+function CardMetaPanel({cardId, existing, userCode, onSaved}: {
+  cardId: string; existing: ManualPrice[]; userCode: string; onSaved: ()=>void
+}) {
+  const saved = existing.find(e => e.card_language != null || e.card_is_holo != null || e.card_is_reverse_holo != null)
+  const [editing, setEditing] = useState(!saved)
+  const [lang, setLang] = useState(saved?.card_language || 'D')
+  const [isHolo, setIsHolo] = useState(saved?.card_is_holo || false)
+  const [isRevHolo, setIsRevHolo] = useState(saved?.card_is_reverse_holo || false)
+  const [saving, setSaving] = useState(false)
+
+  const inp: React.CSSProperties = {background:'#0d0d14',border:'1px solid rgba(255,255,255,.1)',
+    borderRadius:7,color:'#f0f0f8',padding:'6px 10px',fontSize:12,fontFamily:'inherit'}
+  const sel: React.CSSProperties = {...inp,cursor:'pointer',appearance:'none',
+    backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' fill='none'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%2355556a' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")`,
+    backgroundRepeat:'no-repeat',backgroundPosition:'right 8px center',paddingRight:24}
+
+  async function save() {
+    setSaving(true)
+    try {
+      const {createClient} = await import('@supabase/supabase-js')
+      const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+      if (saved?.id) {
+        await db.from('manual_prices').update({card_language:lang, card_is_holo:isHolo, card_is_reverse_holo:isRevHolo}).eq('id', saved.id)
+      } else if (existing.length > 0) {
+        await db.from('manual_prices').update({card_language:lang, card_is_holo:isHolo, card_is_reverse_holo:isRevHolo}).eq('id', existing[0].id!)
+      } else {
+        await db.from('manual_prices').insert({
+          card_id:cardId, entered_at:new Date().toISOString().split('T')[0],
+          language:'D', condition:'NM', price:0, note:'',
+          card_language:lang, card_is_holo:isHolo, card_is_reverse_holo:isRevHolo,
+          user_code:userCode
+        })
+      }
+      setEditing(false)
+      onSaved()
+    } catch(e:any) { alert('Fehler: '+e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div>
+      <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'1px',color:'#55556a',marginBottom:8}}>
+        Karten-Info
+      </div>
+      {!editing && saved ? (
+        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+          <span style={{fontSize:12,background:'rgba(78,158,255,.12)',color:'#4e9eff',
+            borderRadius:6,padding:'3px 10px',border:'1px solid rgba(78,158,255,.2)'}}>
+            🌍 {LANGUAGES.find(l=>l.v===saved.card_language)?.l || saved.card_language}
+          </span>
+          {saved.card_is_holo&&<span style={{fontSize:12,background:'rgba(255,212,38,.12)',color:'#ffd426',
+            borderRadius:6,padding:'3px 10px',border:'1px solid rgba(255,212,38,.2)'}}>✨ Holo</span>}
+          {saved.card_is_reverse_holo&&<span style={{fontSize:12,background:'rgba(180,123,255,.12)',color:'#b47bff',
+            borderRadius:6,padding:'3px 10px',border:'1px solid rgba(180,123,255,.2)'}}>🔄 Reverse Holo</span>}
+          <button onClick={()=>setEditing(true)} style={{
+            background:'none',border:'1px solid rgba(255,255,255,.1)',borderRadius:7,
+            color:'#55556a',fontSize:11,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit'}}>
+            ✏️ Ändern
+          </button>
+        </div>
+      ) : (
+        <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'flex-end'}}>
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{fontSize:10,color:'#55556a'}}>Sprache</label>
+            <select value={lang} onChange={e=>setLang(e.target.value)} style={{...sel,width:140}}>
+              {LANGUAGES.map(l=><option key={l.v} value={l.v}>{l.l}</option>)}
+            </select>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{fontSize:10,color:'#55556a'}}>Holo</label>
+            <select value={isHolo?'ja':'nein'} onChange={e=>setIsHolo(e.target.value==='ja')} style={{...sel,width:80}}>
+              <option value="nein">Nein</option>
+              <option value="ja">Ja</option>
+            </select>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{fontSize:10,color:'#55556a'}}>Reverse Holo</label>
+            <select value={isRevHolo?'ja':'nein'} onChange={e=>setIsRevHolo(e.target.value==='ja')} style={{...sel,width:80}}>
+              <option value="nein">Nein</option>
+              <option value="ja">Ja</option>
+            </select>
+          </div>
+          <button onClick={save} disabled={saving} style={{
+            display:'inline-flex',alignItems:'center',gap:5,padding:'7px 14px',
+            background:'linear-gradient(135deg,#ff3d3d,#cc2200)',color:'#fff',
+            border:'none',borderRadius:7,fontSize:12,fontWeight:600,
+            cursor:saving?'not-allowed':'pointer',opacity:saving?.6:1,
+            fontFamily:'inherit',alignSelf:'flex-end'}}>
+            <Save size={11}/>{saving?'…':'Speichern'}
+          </button>
+          {saved&&<button onClick={()=>setEditing(false)} style={{
+            background:'none',border:'1px solid rgba(255,255,255,.1)',borderRadius:7,
+            color:'#55556a',fontSize:11,padding:'7px 10px',cursor:'pointer',
+            fontFamily:'inherit',alignSelf:'flex-end'}}>Abbrechen</button>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── CM Link Panel ─────────────────────────────────────────────
 function CmLinkPanel({cardId, existing, userCode, onSaved}: {
   cardId: string; existing: ManualPrice[]; userCode: string; onSaved: ()=>void
@@ -701,6 +806,11 @@ function MobileCardGrid({cards,manualPrices,selected,onSelect,onSaved,userCode,h
                 {/* Manual Panel */}
                 <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:12,marginBottom:12}}>
                   <ManualPanel cardId={card.id} existing={cardManual} onSaved={onSaved} userCode={userCode}/>
+                </div>
+
+                {/* Karten-Info */}
+                <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:10,marginBottom:10}}>
+                  <CardMetaPanel cardId={card.id} existing={cardManual} userCode={userCode} onSaved={onSaved}/>
                 </div>
 
                 {/* CM Link */}
@@ -1212,9 +1322,14 @@ export default function Dashboard() {
                         <td style={{padding:'10px 14px'}}>
                           <div style={{fontWeight:800,fontSize:13}}>{card.name}</div>
                           <div style={{fontSize:11,color:'#55556a',marginTop:1}}>{card.series}</div>
-                          <div style={{fontFamily:'monospace',fontSize:9,color:'#404055',marginTop:2,
-                            background:'#1a1a2a',borderRadius:4,padding:'1px 5px',display:'inline-block',
-                            border:'1px solid rgba(255,255,255,.06)'}}>{card.card_id} · {card.variant}</div>
+                          <div style={{display:'flex',alignItems:'center',gap:4,marginTop:3,flexWrap:'wrap'}}>
+                            <span style={{fontFamily:'monospace',fontSize:9,color:'#404055',
+                              background:'#1a1a2a',borderRadius:4,padding:'1px 5px',display:'inline-block',
+                              border:'1px solid rgba(255,255,255,.06)'}}>{card.card_id} · {card.variant}</span>
+                            {(()=>{const m=cardManual.find(e=>e.card_language!=null);return m?.card_language?<span style={{fontSize:9,background:'rgba(78,158,255,.1)',color:'#4e9eff',borderRadius:4,padding:'1px 5px'}}>{m.card_language}</span>:null})()}
+                            {cardManual.find(e=>e.card_is_holo)&&<span style={{fontSize:9,background:'rgba(255,212,38,.1)',color:'#ffd426',borderRadius:4,padding:'1px 5px'}}>Holo</span>}
+                            {cardManual.find(e=>e.card_is_reverse_holo)&&<span style={{fontSize:9,background:'rgba(180,123,255,.1)',color:'#b47bff',borderRadius:4,padding:'1px 5px'}}>RH</span>}
+                          </div>
                         </td>
                         <td style={{padding:'10px 14px',fontSize:11,color:'#8888aa',maxWidth:130}}>
                           <div style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{card.set_name}</div>
@@ -1280,6 +1395,11 @@ export default function Dashboard() {
                                 {/* Manual prices */}
                                 <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:16,marginBottom:12}}>
                                   <ManualPanel cardId={card.id} existing={cardManual} onSaved={loadManual} userCode={userCode||'default'}/>
+                                </div>
+
+                                {/* Karten-Info */}
+                                <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:12,marginBottom:12}}>
+                                  <CardMetaPanel cardId={card.id} existing={cardManual} userCode={userCode||'default'} onSaved={loadManual}/>
                                 </div>
 
                                 {/* CM Link */}
