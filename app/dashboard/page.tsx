@@ -367,7 +367,6 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
   const [date,setDate]=useState(new Date().toISOString().split('T')[0])
   const [note,setNote]=useState('')
   const [purchasePrice,setPurchasePrice]=useState('')
-  const [salePrice,setSalePrice]=useState('')
   const [saving,setSaving]=useState(false)
 
   // Kaufpreis: einmalig pro Karte - wenn schon einer existiert, vorausfüllen & sperren
@@ -387,8 +386,7 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
       const {createClient}=await import('@supabase/supabase-js')
       const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
       const pp = existingPurchasePrice != null ? existingPurchasePrice : (purchasePrice ? parseFloat(purchasePrice.replace(',','.')) : null)
-      const sp = salePrice ? parseFloat(salePrice.replace(',','.')) : null
-      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note,user_code:userCode,purchase_price:pp,sale_price:sp})
+      const {error}=await db.from('manual_prices').insert({card_id:cardId,entered_at:date,language:lang,condition:cond,price:p,note,user_code:userCode,purchase_price:pp})
       if(error) throw error
       setPrice('');setNote('');onSaved()
     }catch(e:any){alert('Fehler: '+e.message)}
@@ -464,7 +462,6 @@ function ManualPanel({cardId,existing,onSaved,userCode}:{cardId:string;existing:
           {l:'Preis (€)',el:<input type="text" value={price} onChange={e=>setPrice(e.target.value)} placeholder="3,50" style={{...inp,width:90}}/>},
           {l:'Notiz',el:<input type="text" value={note} onChange={e=>setNote(e.target.value)} placeholder="optional" style={{...inp,width:160}}/>},
           ...(existingPurchasePrice == null ? [{l:'Kaufpreis (€)',el:<input type="text" value={purchasePrice} onChange={(e:any)=>setPurchasePrice(e.target.value)} placeholder="z.B. 2,00" style={{...inp,width:100}}/>}] : []),
-          {l:'Verkaufspreis (€)',el:<input type="text" value={salePrice} onChange={(e:any)=>setSalePrice(e.target.value)} placeholder="optional" style={{...inp,width:100}}/>},
         ].map(({l,el})=>(
           <div key={l} style={{display:'flex',flexDirection:'column',gap:4}}>
             <label style={{fontSize:10,color:'#55556a'}}>{l}</label>
@@ -493,10 +490,12 @@ function CardMetaPanel({cardId, existing, userCode, onSaved}: {
   cardId: string; existing: ManualPrice[]; userCode: string; onSaved: ()=>void
 }) {
   const saved = existing.find(e => e.card_language != null || e.card_is_holo != null || e.card_is_reverse_holo != null)
+  const savedSalePrice = existing.find(e => e.sale_price != null)?.sale_price ?? null
   const [editing, setEditing] = useState(!saved)
   const [lang, setLang] = useState(saved?.card_language || 'D')
   const [isHolo, setIsHolo] = useState(saved?.card_is_holo || false)
   const [isRevHolo, setIsRevHolo] = useState(saved?.card_is_reverse_holo || false)
+  const [salePrice, setSalePrice] = useState(savedSalePrice ? String(savedSalePrice).replace('.', ',') : '')
   const [saving, setSaving] = useState(false)
 
   const inp: React.CSSProperties = {background:'#0d0d14',border:'1px solid rgba(255,255,255,.1)',
@@ -510,6 +509,7 @@ function CardMetaPanel({cardId, existing, userCode, onSaved}: {
     try {
       const {createClient} = await import('@supabase/supabase-js')
       const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+      const sp = salePrice ? parseFloat(salePrice.replace(',', '.')) : null
       if (saved?.id) {
         await db.from('manual_prices').update({card_language:lang, card_is_holo:isHolo, card_is_reverse_holo:isRevHolo}).eq('id', saved.id)
       } else if (existing.length > 0) {
@@ -521,6 +521,10 @@ function CardMetaPanel({cardId, existing, userCode, onSaved}: {
           card_language:lang, card_is_holo:isHolo, card_is_reverse_holo:isRevHolo,
           user_code:userCode
         })
+      }
+      // Save sale price separately to latest entry
+      if (sp != null && existing.length > 0) {
+        await db.from('manual_prices').update({sale_price:sp}).eq('id', existing[0].id!)
       }
       setEditing(false)
       onSaved()
@@ -543,6 +547,8 @@ function CardMetaPanel({cardId, existing, userCode, onSaved}: {
             borderRadius:6,padding:'3px 10px',border:'1px solid rgba(255,212,38,.2)'}}>✨ Holo</span>}
           {saved.card_is_reverse_holo&&<span style={{fontSize:12,background:'rgba(180,123,255,.12)',color:'#b47bff',
             borderRadius:6,padding:'3px 10px',border:'1px solid rgba(180,123,255,.2)'}}>🔄 Reverse Holo</span>}
+          {savedSalePrice!=null&&<span style={{fontSize:12,background:'rgba(41,224,134,.12)',color:'#29e086',
+            borderRadius:6,padding:'3px 10px',border:'1px solid rgba(41,224,134,.2)'}}>💰 Verkauf: {fmt(savedSalePrice)}</span>}
           <button onClick={()=>setEditing(true)} style={{
             background:'none',border:'1px solid rgba(255,255,255,.1)',borderRadius:7,
             color:'#55556a',fontSize:11,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit'}}>
@@ -570,6 +576,11 @@ function CardMetaPanel({cardId, existing, userCode, onSaved}: {
               <option value="nein">Nein</option>
               <option value="ja">Ja</option>
             </select>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{fontSize:10,color:'#55556a'}}>Verkaufspreis (€)</label>
+            <input type="text" value={salePrice} onChange={e=>setSalePrice(e.target.value)}
+              placeholder="optional" style={{...inp,width:100}}/>
           </div>
           <button onClick={save} disabled={saving} style={{
             display:'inline-flex',alignItems:'center',gap:5,padding:'7px 14px',
